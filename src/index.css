@@ -1,0 +1,106 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+body {
+  font-family: 'Inter', system-ui, -apple-system, sans-serif;
+  background-color: #0F172A;
+  color: #E2E8F0;
+  min-height: 100vh;
+}
+
+/* Custom scrollbar */
+::-webkit-scrollbar {
+  width: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: #1E293B;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #334155;
+  border-radius: 3px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #475569;
+}
+
+/* Selection highlight */
+::selection {
+  background: rgba(45, 212, 191, 0.3);
+  color: #E2E8F0;
+}
+
+/* Text word hover effect */
+.word-hoverable:hover {
+  background: rgba(45, 212, 191, 0.15);
+  border-radius: 3px;
+  cursor: pointer;
+  transition: background 0.15s ease;
+}
+
+/* Shimmer loading */
+.shimmer {
+  background: linear-gradient(
+    90deg,
+    #1E293B 0%,
+    #334155 40%,
+    #1E293B 80%
+  );
+  background-size: 200% 100%;
+  animation: shimmer 2s linear infinite;
+}
+
+/* Floating card */
+.floating-card {
+  box-shadow: 0 4px 30px rgba(0, 0, 0, 0.4), 0 0 0 1px rgba(45, 212, 191, 0.1);
+}
+
+/* TTS speed slider */
+.speed-slider {
+  -webkit-appearance: none;
+  appearance: none;
+  height: 4px;
+  background: #334155;
+  border-radius: 2px;
+  outline: none;
+}
+
+.speed-slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: #2DD4BF;
+  cursor: pointer;
+  box-shadow: 0 0 10px rgba(45, 212, 191, 0.4);
+}
+
+/* 朗读句子高亮 — 呼吸光晕背景 */
+.sentence-glow {
+  background: linear-gradient(90deg, rgba(45, 212, 191, 0.25), rgba(94, 234, 212, 0.10));
+  border-left: 3px solid #2DD4BF;
+  border-radius: 0 6px 6px 0;
+  box-shadow:
+    0 0 20px rgba(45, 212, 191, 0.15),
+    inset 0 0 12px rgba(45, 212, 191, 0.05);
+  animation: sentence-pulse 0.8s ease-out;
+}
+
+@keyframes sentence-pulse {
+  0% { background: rgba(45, 212, 191, 0.40); box-shadow: 0 0 30px rgba(45, 212, 191, 0.30); }
+  100% { background: linear-gradient(90deg, rgba(45, 212, 191, 0.25), rgba(94, 234, 212, 0.10)); box-shadow: 0 0 20px rgba(45, 212, 191, 0.15); }
+}
