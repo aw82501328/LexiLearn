@@ -114,7 +114,31 @@ const MIME = {
 };
 
 function serveStatic(req, res) {
-  let filePath = path.join(PUBLIC_DIR, req.url === '/' ? '/index.html' : req.url);
+  const url = new URL(req.url, `http://${req.headers.host}`);
+  let rawPath = url.pathname;
+
+  // 管理后台走 /admin/ 子路径
+  if (rawPath.startsWith('/admin')) {
+    let adminFilePath = path.join(PUBLIC_DIR, rawPath);
+    adminFilePath = adminFilePath.split('?')[0];
+    const ext = path.extname(adminFilePath);
+    if (ext && fs.existsSync(adminFilePath) && fs.statSync(adminFilePath).isFile()) {
+      res.setHeader('Content-Type', MIME[ext] || 'application/octet-stream');
+      res.end(fs.readFileSync(adminFilePath));
+      return true;
+    }
+    // SPA fallback: 所有 /admin/* 路由返回 admin.html
+    const adminHtml = path.join(PUBLIC_DIR, 'admin.html');
+    if (fs.existsSync(adminHtml)) {
+      res.setHeader('Content-Type', 'text/html');
+      res.end(fs.readFileSync(adminHtml));
+      return true;
+    }
+    return false;
+  }
+
+  // 主应用
+  let filePath = path.join(PUBLIC_DIR, rawPath === '/' ? '/index.html' : rawPath);
   filePath = filePath.split('?')[0];
 
   const ext = path.extname(filePath);

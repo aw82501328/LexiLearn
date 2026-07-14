@@ -13,6 +13,10 @@ export default defineConfig({
           if (url === '/' || (!url.includes('.') && !url.startsWith('/api/') && !url.startsWith('/@') && !url.startsWith('/node_modules') && !url.startsWith('/src'))) {
             req.url = '/admin.html';
           }
+          // /admin/ 子路径也走 admin.html
+          if (url.startsWith('/admin/') || url === '/admin') {
+            req.url = '/admin.html';
+          }
           next();
         });
       },
