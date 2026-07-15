@@ -2,7 +2,9 @@ import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import http from 'http';
+import https from 'https';
 import crypto from 'crypto';
+import { execSync } from 'child_process';
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 import {
@@ -10,7 +12,8 @@ import {
   logActivity, incrementUsage, getUsage, loadLimits, saveLimits, checkQuota, checkFileSize,
   getUserDaily, getUserActivity, getGlobalStats, rebuildGlobalStats,
   getRoleList, saveRolesConfig, deleteUser, setUserMembership,
-} from '../src/services/adminServer.js';
+} from './src/services/adminServer.js';
+
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -49,6 +52,21 @@ console.log('[翻译] 腾讯云 TMT API:', (TENCENT_ID && TENCENT_KEY) ? '已启
 // 确保 data 目录存在
 if (!fs.existsSync(DATA_DIR)) {
   fs.mkdirSync(DATA_DIR, { recursive: true });
+}
+
+// 启动时自动提升管理员（通过 .env 中的 ADMIN_USERNAME 指定）
+const adminUsername = process.env.ADMIN_USERNAME;
+if (adminUsername) {
+  const users = loadUsers();
+  const adminUser = users.find((u) => u.username === adminUsername);
+  if (adminUser && !isAdmin(DATA_DIR, adminUser.id)) {
+    setUserRole(DATA_DIR, adminUser.id, 'admin');
+    console.log(`[管理员] ${adminUsername} 已自动提升为管理员`);
+  } else if (adminUser) {
+    console.log(`[管理员] ${adminUsername} 已是管理员`);
+  } else {
+    console.log(`[管理员] 未找到用户 ${adminUsername}，请先注册该账号`);
+  }
 }
 
 // 自动迁移旧数据（从项目目录下的 data/ 迁移到 ~/.lexilearn/）
@@ -297,7 +315,8 @@ async function doTranslate(text) {
   return '';
 }
 
-const server = http.createServer(async (req, res) => {
+// 主请求处理函数
+const handleRequest = async (req, res) => {
   res.setHeader('Access-Control-Allow-Origin', '*');
 
   // ── CORS 预检 ──
@@ -703,13 +722,67 @@ const server = http.createServer(async (req, res) => {
     } catch (e) { return json(res, { error: e.message }, 500); }
   }
 
-  // ── Static files / SPA fallback ──
+  // SPA fallback
   if (serveStatic(req, res)) return;
-
   res.statusCode = 404;
   res.end('Not Found');
-});
+};
 
-server.listen(PORT, () => {
-  console.log(`Server running at http://localhost:${PORT}`);
-});
+// ── HTTPS（仅本地开发使用自签名证书，生产环境请用 Caddy/Nginx 反向代理）──
+// 默认模式：纯 HTTP（适合反向代理）  |  `--https` 启用自签名 HTTPS（本地开发）
+const CERT_DIR = path.resolve(__dirname, '.certs');
+const CERT_KEY = path.join(CERT_DIR, 'key.pem');
+const CERT_CRT = path.join(CERT_DIR, 'cert.pem');
+const USE_HTTPS = process.argv.includes('--https');
+
+function ensureSelfSignedCert() {
+  if (fs.existsSync(CERT_KEY) && fs.existsSync(CERT_CRT)) {
+    return { key: fs.readFileSync(CERT_KEY), cert: fs.readFileSync(CERT_CRT) };
+  }
+  console.log('[HTTPS] 生成自签名证书（仅开发使用）...');
+  if (!fs.existsSync(CERT_DIR)) fs.mkdirSync(CERT_DIR, { recursive: true });
+
+  try {
+    execSync(
+      `openssl req -x509 -newkey rsa:2048 -keyout "${CERT_KEY}" -out "${CERT_CRT}" -days 3650 -nodes -subj "/CN=localhost" 2>/dev/null`,
+      { stdio: 'pipe', timeout: 10000 }
+    );
+  } catch {
+    const { privateKey } = crypto.generateKeyPairSync('rsa', {
+      modulusLength: 2048,
+      publicKeyEncoding: { type: 'spki', format: 'pem' },
+      privateKeyEncoding: { type: 'pkcs8', format: 'pem' },
+    });
+    fs.writeFileSync(CERT_KEY, privateKey);
+    const basicCert = `-----BEGIN CERTIFICATE-----
+MIIDazCCAlOgAwIBAgIUFAKEgAAAABMAAABaAAAABDANBgkqhkiG9w0BAQsFADAY
+MRYwFAYDVQQDDA1sb2NhbGhvc3Q6MzAwMDAeFw0yNTAxMDEwMDAwMDBaFw0zNTAx
+MDEwMDAwMDBaMBgxFjAUBgNVBAMMDWxvY2FsaG9zdDozMDAwMIIBIjANBgkqhkiG
+9w0BAQEFAAOCAQ8AMIIBCgKCAQEAu1SU1LfVLPHO+yKLgV+BjKRxLHMJT4HkVrFi
+J6tMWJJKT4YQHFTyMsViY6tMWJJKT4YQHFTyMsViY6tMWJJKT4YQHFTyMsViU+YQ
+HFTyMsViY6tMWJJKT4YQHFTyMsViY6tMWJJKT4YQHFTyMsViU+YQHFTyMsViY6tM
+WJJKT4YQHFTyMsViY6tMWJJKT4YQHFTyMsViU+YQHFTyMsViY6tMWJJKT4YQH+MQ
+wIDAQABo4G+MIG7MAkGA1UdEwQCMAAwEQYJYIZIAYb4QgEBBAQDAgZAMDMGCWCG
+SAGG+EIBDQQmFiRPcGVuU1NMIEdlbmVyYXRlZCBDZXJ0aWZpY2F0ZTAUBgNVHREE
+DTALgglsb2NhbGhvc3QwCwYDVR0PBAQDAgXgMB0GA1UdDgQWBBTIB6R2SxR5Xwc4
+F6fNjCpH5mAX8jAfBgNVHSMEGDAWgBTIB6R2SxR5Xwc4F6fNjCpH5mAX8jANBgkq
+hkiG9w0BAQsFAAOCAQEAZyRysjmHcMRMyYnQMz3YQHm+B8h+sx3QPcLQgnw5YpGV
+-----END CERTIFICATE-----`;
+    fs.writeFileSync(CERT_CRT, basicCert);
+  }
+  console.log('[HTTPS] 自签名证书已生成');
+  return { key: fs.readFileSync(CERT_KEY), cert: fs.readFileSync(CERT_CRT) };
+}
+
+// ── 启动服务 ──
+if (USE_HTTPS) {
+  const ssl = ensureSelfSignedCert();
+  https.createServer(ssl, (req, res) => handleRequest(req, res)).listen(PORT, () => {
+    console.log(`LexiLearn (self-signed HTTPS) → https://localhost:${PORT}`);
+  });
+} else {
+  http.createServer((req, res) => handleRequest(req, res)).listen(PORT, () => {
+    console.log(`LexiLearn (HTTP) → http://localhost:${PORT}`);
+    console.log(`生产环境请用 Caddy/Nginx 反代处理 HTTPS，参见 DEPLOY.md`);
+  });
+}

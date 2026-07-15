@@ -58,3 +58,5 @@ fix.cjs
 *.pem
 *.cert
 *.key
+.certs/
+deploy-package/
