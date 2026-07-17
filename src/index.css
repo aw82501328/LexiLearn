@@ -104,3 +104,55 @@ body {
   0% { background: rgba(45, 212, 191, 0.40); box-shadow: 0 0 30px rgba(45, 212, 191, 0.30); }
   100% { background: linear-gradient(90deg, rgba(45, 212, 191, 0.25), rgba(94, 234, 212, 0.10)); box-shadow: 0 0 20px rgba(45, 212, 191, 0.15); }
 }
+
+/* ================ 移动端基础适配 ================ */
+:root {
+  --safe-area-top: env(safe-area-inset-top, 0px);
+  --safe-area-bottom: env(safe-area-inset-bottom, 0px);
+  --safe-area-left: env(safe-area-inset-left, 0px);
+  --safe-area-right: env(safe-area-inset-right, 0px);
+  --tab-bar-height: 60px;
+  /* Capacitor 兼容变量 */
+  --ion-safe-area-top: var(--safe-area-top);
+  --ion-safe-area-bottom: var(--safe-area-bottom);
+}
+
+/* 消除 300ms 点击延迟 + 去掉蓝色高亮 */
+a, button, [role="button"], input, select, textarea, label {
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* 导航元素禁止文本选中（原生 App 手感）*/
+nav, [role="tab"], [role="tablist"] {
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+/* 禁止页面弹性滚动（App 原生感）*/
+html, body {
+  overscroll-behavior: none;
+  -webkit-overflow-scrolling: touch;
+}
+
+/* iOS 输入框不自动缩放（16px 是阈值）*/
+input, textarea, select {
+  font-size: 16px;
+}
+
+/* 移动端安全区域 padding 工具类 */
+.pt-safe { padding-top: var(--safe-area-top); }
+.pb-safe { padding-bottom: var(--safe-area-bottom); }
+.pl-safe { padding-left: var(--safe-area-left); }
+.pr-safe { padding-right: var(--safe-area-right); }
+
+/* 底部 Tab Bar 占位 — 有底部导航时给页面留白 */
+.pb-tab { padding-bottom: calc(var(--tab-bar-height) + var(--safe-area-bottom)); }
+
+/* 隐藏桌面滚动条（移动端）*/
+@media (max-width: 767px) {
+  ::-webkit-scrollbar {
+    width: 0;
+    height: 0;
+  }
+}

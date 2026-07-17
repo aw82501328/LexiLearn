@@ -19,7 +19,7 @@ export default function Navbar() {
   ];
 
   return (
-    <nav className="sticky top-0 z-50 border-b border-white/5 bg-deep-space/80 backdrop-blur-xl">
+    <nav className="sticky top-0 z-50 border-b border-white/5 bg-deep-space/80 backdrop-blur-xl hidden md:block">
       <div className="mx-auto flex max-w-7xl items-center justify-between px-6 py-3">
         <Link to="/" className="flex items-center gap-2.5 group">
           <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-gradient-to-br from-electric-cyan to-cyan-glow/60 text-dark-slate font-bold text-sm shadow-[0_0_15px_rgba(45,212,191,0.25)]">

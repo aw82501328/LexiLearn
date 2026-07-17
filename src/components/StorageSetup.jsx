@@ -5,7 +5,7 @@ import {
   isDiskMode, supportsDiskStorage,
   requestStorageDirectory, restoreStorageDirectory,
   resetDiskMode, getStorageSize, getStoragePath,
-  isOPFSSupported,
+  isOPFSSupported, isNativeMode, supportsNativeStorage,
 } from '../services/dataStore';
 
 export default function StorageSetup({ onReady, showToggle = false, forceShow = false, onClose }) {
@@ -40,8 +40,18 @@ export default function StorageSetup({ onReady, showToggle = false, forceShow = 
 
   async function init() {
     setStatus('loading');
-    // 直接从 localStorage 读取存储模式，不弹任何选择框（惰性恢复句柄）
     const mode = localStorage.getItem('lexilearn_storage_mode');
+
+    // 原生模式（Capacitor App）
+    if (mode === 'native' || supportsNativeStorage()) {
+      localStorage.setItem('lexilearn_storage_mode', 'native');
+      setStatus('native-ready');
+      setPath(getStoragePath() || '');
+      onReady?.();
+      return;
+    }
+
+    // 磁盘模式（桌面浏览器 FSA）
     if (mode === 'disk') {
       try { await restoreStorageDirectory(); } catch {}
       setStatus('disk-ready');
@@ -71,7 +81,12 @@ export default function StorageSetup({ onReady, showToggle = false, forceShow = 
       await refreshInfo();
       onReady?.();
     } else if (result.reason === 'cancelled') {
-      if (isOPFSSupported()) {
+      if (supportsNativeStorage()) {
+        setStatus('native-ready');
+        setPath(getStoragePath() || '');
+        await refreshInfo();
+        onReady?.();
+      } else if (isOPFSSupported()) {
         localStorage.setItem('lexilearn_storage_mode', 'opfs');
         setStatus('opfs-ready');
         setPath(getStoragePath() || '');
@@ -90,7 +105,11 @@ export default function StorageSetup({ onReady, showToggle = false, forceShow = 
   function handleReset() {
     resetDiskMode();
     setPath('');
-    if (isOPFSSupported()) {
+    // 原生平台优先 native 模式
+    if (supportsNativeStorage()) {
+      setStatus('native-ready');
+      setPath(getStoragePath() || '');
+    } else if (isOPFSSupported()) {
       localStorage.setItem('lexilearn_storage_mode', 'opfs');
       setStatus('opfs-ready');
       setPath(getStoragePath() || '');
@@ -116,8 +135,7 @@ export default function StorageSetup({ onReady, showToggle = false, forceShow = 
   }, [showPanel, showToggle]);
 
   if (status === 'pending-auth') return null;
-  if (!showToggle && status === 'disk-ready' && !showPanel) return null;
-  if (!showToggle && status === 'opfs-ready' && !showPanel) return null;
+  if (!showToggle && (status === 'disk-ready' || status === 'opfs-ready' || status === 'native-ready') && !showPanel) return null;
 
   if (status === 'loading') {
     return (
@@ -233,7 +251,7 @@ export default function StorageSetup({ onReady, showToggle = false, forceShow = 
               </div>
 
               {/* OPFS fallback */}
-              {isOPFSSupported() && !isDiskMode() && (
+              {isOPFSSupported() && !isDiskMode() && !isNativeMode() && (
                 <div className={`rounded-xl border p-4 mb-4 transition-all ${
                   status === 'opfs-ready'
                     ? 'border-emerald-500/20 bg-emerald-500/5'
@@ -263,6 +281,44 @@ export default function StorageSetup({ onReady, showToggle = false, forceShow = 
                     {status === 'opfs-ready' && (
                       <span className="flex items-center gap-1 text-[11px] px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
                         <span className="h-1.5 w-1.5 rounded-full bg-emerald-400 animate-pulse-glow" />
+                        使用中
+                      </span>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {/* Native (Capacitor) storage */}
+              {supportsNativeStorage() && (
+                <div className={`rounded-xl border p-4 mb-4 transition-all ${
+                  isNativeMode()
+                    ? 'border-violet-500/20 bg-violet-500/5'
+                    : 'border-white/5'
+                }`}>
+                  <div className="flex items-center gap-3 mb-3">
+                    <div className={`flex h-9 w-9 items-center justify-center rounded-lg ${
+                      isNativeMode() ? 'bg-violet-500/10' : 'bg-mid-slate/50'
+                    }`}>
+                      <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className={isNativeMode() ? 'text-violet-400' : 'text-muted-gray'}>
+                        <rect x="5" y="2" width="14" height="20" rx="2" ry="2"/><line x1="12" y1="18" x2="12.01" y2="18"/>
+                      </svg>
+                    </div>
+                    <div className="flex-1">
+                      <p className="text-sm font-medium text-soft-white">原生应用存储</p>
+                      <p className="text-[11px] text-muted-gray">
+                        {path ? (
+                          <span className="inline-flex items-center gap-1">
+                            <svg xmlns="http://www.w3.org/2000/svg" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                              <rect x="5" y="2" width="14" height="20" rx="2" ry="2"/><line x1="12" y1="18" x2="12.01" y2="18"/>
+                            </svg>
+                            设备本地 Documents 目录
+                          </span>
+                        ) : '数据保存在 App 沙箱中'}
+                      </p>
+                    </div>
+                    {isNativeMode() && (
+                      <span className="flex items-center gap-1 text-[11px] px-2 py-0.5 rounded-full bg-violet-500/10 text-violet-400 border border-violet-500/20">
+                        <span className="h-1.5 w-1.5 rounded-full bg-violet-400 animate-pulse-glow" />
                         使用中
                       </span>
                     )}
@@ -339,18 +395,18 @@ function PDFModeSetting() {
     <div className="flex flex-col gap-2.5">
       <div className="flex gap-2">
         <button
-          onClick={() => handleChange('native')}
-          title="原生文本提取 — 快速，适合电子书 PDF"
+          onClick={() => handleChange('ocr')}
+          title="OCR 文字识别 — 本地免费，适合纯文字 PDF"
           className={`flex-1 rounded-lg border px-3 py-2 text-left transition-all ${
-            mode === 'native'
+            mode === 'ocr'
               ? 'border-emerald-500/30 bg-emerald-500/10'
               : 'border-white/5 hover:border-white/10 hover:bg-white/[0.02]'
           }`}
         >
-          <p className={`text-xs font-medium ${mode === 'native' ? 'text-emerald-400' : 'text-muted-gray'}`}>
-            原生提取
+          <p className={`text-xs font-medium ${mode === 'ocr' ? 'text-emerald-400' : 'text-muted-gray'}`}>
+            OCR 识别
           </p>
-          <p className="text-[9px] text-muted-gray/60 mt-0.5">快速 · 免费 · 无需 API</p>
+          <p className="text-[9px] text-muted-gray/60 mt-0.5">免费 · 本地 · 逐页渲染</p>
         </button>
         <button
           onClick={() => handleChange('vision')}

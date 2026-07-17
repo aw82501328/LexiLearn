@@ -391,11 +391,7 @@ export default function PDFPageViewer({ fileId, pdfBuffer, fileName, pages, full
                 </p>
               ))}
             </div>
-          ) : (
-            <p className="text-muted-gray text-sm text-center py-8 italic">
-              未能提取到任何文字内容。
-            </p>
-          )}
+          ) : null}
             </div>
           </div>
 

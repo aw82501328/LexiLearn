@@ -95,12 +95,12 @@ export default function AdminUsersPage() {
   });
 
   return (
-    <div className="flex gap-6">
+    <div className="flex flex-col lg:flex-row gap-6">
       {/* Main */}
       <div className="flex-1 min-w-0">
         <div className="rounded-2xl border border-white/10 bg-dark-slate overflow-hidden">
           {/* Summary */}
-          <div className="grid grid-cols-6 gap-3 p-5 border-b border-white/5">
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 p-5 border-b border-white/5">
             <MiniCard label="总用户" value={users.length} />
             <MiniCard label="管理员" value={membershipCounts.admin} color="#8b5cf6" />
             <MiniCard label="普通用户" value={membershipCounts.basic} color="#9ca3af" />
@@ -109,7 +109,7 @@ export default function AdminUsersPage() {
             <MiniCard label="今日事件" value={totalToday} />
           </div>
 
-          <table className="w-full">
+          <div className="overflow-x-auto"><table className="w-full min-w-[600px]">
             <thead>
               <tr className="border-b border-white/5 bg-white/[0.01]">
                 <th className="px-5 py-3 text-left text-[11px] font-medium text-muted-gray uppercase tracking-wider">用户</th>
@@ -164,13 +164,13 @@ export default function AdminUsersPage() {
                 );
               })}
             </tbody>
-          </table>
+          </table></div>
         </div>
       </div>
 
       {/* Detail panel */}
       {selectedUser && (
-        <div className="w-96 shrink-0">
+        <div className="w-full lg:w-96 shrink-0">
           {detailLoading ? (
             <div className="flex items-center justify-center py-12">
               <div className="h-6 w-6 animate-spin-slow rounded-full border-2 border-violet-400 border-t-transparent" />
@@ -269,7 +269,7 @@ function UserDetailPanel({ user, roles, activity, daily, onMembershipChange, onD
               <span className="inline-block h-1.5 w-1.5 rounded-full mr-1" style={{ backgroundColor: roleDefault.color || '#6b7280' }} />
               {roleDefault.name} 默认限额
             </p>
-            <div className="grid grid-cols-2 gap-x-3 gap-y-0.5">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-3 gap-y-0.5">
               {fields.map(({ key, label }) => (
                 <div key={key} className="flex justify-between text-[10px]">
                   <span className="text-muted-gray/60">{label}</span>

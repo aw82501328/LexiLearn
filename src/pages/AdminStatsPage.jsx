@@ -47,7 +47,7 @@ export default function AdminStatsPage() {
   return (
     <div className="space-y-6">
       {/* Cards */}
-      <div className="grid grid-cols-4 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         <MiniCard label="今日事件" value={todayTotal} />
         <MiniCard label="本周事件" value={weekTotal} />
         <MiniCard label="今日活跃用户" value={today.activeUsers || 0} />
@@ -57,7 +57,7 @@ export default function AdminStatsPage() {
       {/* Distribution */}
       <div className="rounded-2xl border border-white/10 bg-dark-slate p-6">
         <h3 className="text-sm font-semibold text-soft-white mb-4">今日活动分布</h3>
-        <div className="flex gap-6 items-center">
+        <div className="flex flex-col sm:flex-row gap-6 items-start sm:items-center">
           <div className="flex-1 space-y-2">
             {typeNames.map((key, i) => {
               const v = today[key] || 0;

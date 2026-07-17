@@ -60,3 +60,5 @@ fix.cjs
 *.key
 .certs/
 deploy-package/
+android/
+ios/

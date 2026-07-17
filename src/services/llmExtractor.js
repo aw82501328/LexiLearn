@@ -1,11 +1,44 @@
 /**
  * LLM 文本提取服务 — 兼容 OpenAI / DeepSeek / 智谱 / 月之暗面 等接口
- * 配置方式：.env 文件
+ * 配置方式：.env 文件（API 密钥） + src/config/llmPrompts.json（提示词）
  *
- *   VITE_LLM_API_KEY=sk-xxx
- *   VITE_LLM_BASE_URL=https://api.openai.com/v1
- *   VITE_LLM_MODEL=gpt-4o-mini
+ *   .env:
+ *     VITE_LLM_API_KEY=sk-xxx
+ *     VITE_LLM_BASE_URL=https://api.openai.com/v1
+ *     VITE_LLM_MODEL=gpt-4o-mini
+ *
+ *   src/config/llmPrompts.json:
+ *     修改 systemPrompt / userPrompt / maxTokens / temperature 即可生效
  */
+
+// ── 提示词配置（来自 llmPrompts.json，支持用户自定义）──
+
+const DEFAULT_SYSTEM_PROMPT = 'You are a precise OCR engine. Extract text from document images exactly as they appear. IMPORTANT: Do NOT include page numbers or page footers in the extracted text. Return only the content text, nothing else.';
+const DEFAULT_USER_PROMPT = 'Extract ALL text from this English document page (page {pageNum}). Preserve the original reading order, paragraphs, and line breaks. Only return the extracted text, no explanations. If the page is blank or contains only images without text, return an empty response.';
+
+let _promptConfig = null;
+
+async function loadPromptConfig() {
+  if (_promptConfig) return _promptConfig;
+  try {
+    const mod = await import('../config/llmPrompts.json');
+    _promptConfig = {
+      systemPrompt: mod.systemPrompt || DEFAULT_SYSTEM_PROMPT,
+      userPrompt: mod.userPrompt || DEFAULT_USER_PROMPT,
+      maxTokens: mod.maxTokens || 4096,
+      temperature: mod.temperature ?? 0,
+    };
+  } catch {
+    // 配置文件不存在时使用默认值
+    _promptConfig = {
+      systemPrompt: DEFAULT_SYSTEM_PROMPT,
+      userPrompt: DEFAULT_USER_PROMPT,
+      maxTokens: 4096,
+      temperature: 0,
+    };
+  }
+  return _promptConfig;
+}
 
 function getBaseUrl() {
   return import.meta.env.VITE_LLM_BASE_URL || 'https://api.openai.com/v1';
@@ -47,6 +80,10 @@ export async function extractTextWithLLM(imageBase64, pageNum) {
 
   const baseUrl = getBaseUrl();
   const model = getModel();
+  const cfg = await loadPromptConfig();
+
+  const systemContent = cfg.systemPrompt;
+  const userContent = cfg.userPrompt.replace(/\{pageNum\}/g, String(pageNum));
 
   let lastError = null;
 
@@ -74,14 +111,14 @@ export async function extractTextWithLLM(imageBase64, pageNum) {
             messages: [
               {
                 role: 'system',
-                content: 'You are a precise OCR engine. Extract text from document images exactly as they appear. IMPORTANT: Do NOT include page numbers or page footers in the extracted text. Return only the content text, nothing else.',
+                content: systemContent,
               },
               {
                 role: 'user',
                 content: [
                   {
                     type: 'text',
-                    text: `Extract ALL text from this English document page (page ${pageNum}). Preserve the original reading order, paragraphs, and line breaks. Only return the extracted text, no explanations. If the page is blank or contains only images without text, return an empty response.`,
+                    text: userContent,
                   },
                   {
                     type: 'image_url',
@@ -90,8 +127,8 @@ export async function extractTextWithLLM(imageBase64, pageNum) {
                 ],
               },
             ],
-            max_tokens: 4096,
-            temperature: 0,
+            max_tokens: cfg.maxTokens,
+            temperature: cfg.temperature,
           }),
           signal: controller.signal,
         });
@@ -144,8 +181,7 @@ export async function extractPDFWithLLM(renderPageToImage, totalPages, onProgres
   const pages = new Array(totalPages);
   let completed = 0;
 
-  const CONCURRENCY = 2;          // 降低并发数，减轻 TPM 压力
-  const BATCH_DELAY = 2000;      // 每批之间等待 2 秒
+  const CONCURRENCY = 4;          // 每批 4 页，充分利用 API 并发
 
   async function processPage(pageNum) {
     onProgress?.({ page: pageNum, totalPages, stage: 'llm', pct: 0, done: completed });
@@ -166,11 +202,6 @@ export async function extractPDFWithLLM(renderPageToImage, totalPages, onProgres
       batch.push(processPage(j + 1));
     }
     await Promise.all(batch);
-
-    // 批次间延迟，避免触发 TPM 限流
-    if (i + CONCURRENCY < totalPages) {
-      await sleep(BATCH_DELAY);
-    }
   }
 
   return { pages, text: pages.join('\n\n') };

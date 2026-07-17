@@ -1,8 +1,10 @@
 /**
  * 统一本地存储层
  * 
- * 优先使用 File System Access API（直接读写用户磁盘），
- * 不支持时降级到 OPFS（浏览器沙箱文件系统）。
+ * 三层策略（优先级从高到低）：
+ *   1. Capacitor Native → Capacitor Filesystem（安卓/iOS 原生 App）
+ *   2. File System Access API（桌面浏览器，直接读写用户磁盘）
+ *   3. OPFS（浏览器沙箱文件系统，作为降级方案）
  * 
  * 磁盘模式目录结构：
  *   用户选择的文件夹/
@@ -21,6 +23,34 @@ let _dirHandle = null;
 const APP_FOLDER_ID = 'lexilearn-storage-v3';
 const IDB_NAME = 'lexilearn-fs';
 const IDB_STORE = 'handles';
+
+// ── 原生平台检测 ──
+
+let _isNative = null;
+function isNativePlatform() {
+  if (_isNative !== null) return _isNative;
+  try {
+    _isNative = !!(window.Capacitor?.isNativePlatform?.());
+  } catch {
+    _isNative = false;
+  }
+  return _isNative;
+}
+
+export function isNativeMode() {
+  return isNativePlatform() || localStorage.getItem('lexilearn_storage_mode') === 'native';
+}
+
+export function supportsNativeStorage() {
+  return isNativePlatform();
+}
+
+// ── 原生存储代理 ──
+
+async function nativeCall(fnName, ...args) {
+  const mod = await import('./nativeStorage');
+  return mod[fnName](...args);
+}
 
 // ── 目录句柄 IndexedDB 持久化（跨 HMR / 页面刷新恢复）──
 
@@ -70,6 +100,7 @@ async function loadDirHandle() {
 // ── 模式检测 ──
 
 export function supportsDiskStorage() {
+  if (isNativePlatform()) return false;
   try {
     return typeof window !== 'undefined' && typeof window.showDirectoryPicker === 'function';
   } catch {
@@ -81,9 +112,22 @@ export function isDiskMode() {
   return localStorage.getItem('lexilearn_storage_mode') === 'disk';
 }
 
+export function getStoragePath() {
+  const mode = localStorage.getItem('lexilearn_storage_mode');
+  if (mode === 'native') return '原生应用存储 (Capacitor)';
+  if (mode === 'disk') return localStorage.getItem('lexilearn_storage_path') || '本地文件夹';
+  if (mode === 'opfs') return '浏览器内置存储 (OPFS)';
+  return null;
+}
+
 // ── 目录初始化 ──
 
 export async function requestStorageDirectory() {
+  // 原生平台：自动启用 native 存储
+  if (isNativePlatform()) {
+    localStorage.setItem('lexilearn_storage_mode', 'native');
+    return { ok: true, path: '原生应用存储' };
+  }
   if (!supportsDiskStorage()) {
     return { ok: false, reason: 'unsupported' };
   }
@@ -110,6 +154,10 @@ export async function requestStorageDirectory() {
 }
 
 export async function restoreStorageDirectory() {
+  if (isNativePlatform()) {
+    localStorage.setItem('lexilearn_storage_mode', 'native');
+    return true;
+  }
   if (!supportsDiskStorage()) return false;
   if (localStorage.getItem('lexilearn_storage_mode') !== 'disk') return false;
   try {
@@ -183,13 +231,10 @@ export function resetDiskMode() {
     tx.objectStore(IDB_STORE).delete(APP_FOLDER_ID);
     db.close();
   }).catch(() => {});
-}
-
-export function getStoragePath() {
-  const mode = localStorage.getItem('lexilearn_storage_mode');
-  if (mode === 'disk') return localStorage.getItem('lexilearn_storage_path') || '本地文件夹';
-  if (mode === 'opfs') return '浏览器内置存储 (OPFS)';
-  return null;
+  // 原生平台恢复为 native 模式
+  if (isNativePlatform()) {
+    localStorage.setItem('lexilearn_storage_mode', 'native');
+  }
 }
 
 // ── 内部辅助 ──
@@ -237,6 +282,7 @@ async function removeEntry(parentHandle, name, recursive = false) {
 // ── 原始文件 ──
 
 export async function saveOriginalFile(fileId, file) {
+  if (isNativeMode()) return nativeCall('saveOriginalFile', fileId, file);
   if (!isDiskMode()) {
     const { saveOriginalToOPFS } = await import('./opfsStorage');
     return await saveOriginalToOPFS(fileId, file);
@@ -250,6 +296,7 @@ export async function saveOriginalFile(fileId, file) {
 }
 
 export async function loadOriginalFile(fileId) {
+  if (isNativeMode()) return nativeCall('loadOriginalFile', fileId);
   if (!isDiskMode()) {
     const { loadOriginalFromOPFS } = await import('./opfsStorage');
     return await loadOriginalFromOPFS(fileId);
@@ -272,6 +319,7 @@ export async function loadOriginalFile(fileId) {
 // ── 文件正文内容 ──
 
 export async function saveFileContent(fileId, data) {
+  if (isNativeMode()) return nativeCall('saveFileContent', fileId, data);
   if (!isDiskMode()) {
     const { saveContentToOPFS } = await import('./opfsStorage');
     return await saveContentToOPFS(fileId, data);
@@ -286,6 +334,7 @@ export async function saveFileContent(fileId, data) {
 }
 
 export async function loadFileContent(fileId) {
+  if (isNativeMode()) return nativeCall('loadFileContent', fileId);
   if (!isDiskMode()) {
     const { loadContentFromOPFS } = await import('./opfsStorage');
     return await loadContentFromOPFS(fileId);
@@ -303,6 +352,7 @@ export async function loadFileContent(fileId) {
 // ── PDF 页面图片 ──
 
 export async function savePageImage(fileId, pageNum, dataUrl) {
+  if (isNativeMode()) return nativeCall('savePageImage', fileId, pageNum, dataUrl);
   if (!isDiskMode()) {
     const { savePageImageToOPFS } = await import('./opfsStorage');
     return await savePageImageToOPFS(fileId, pageNum, dataUrl);
@@ -316,6 +366,7 @@ export async function savePageImage(fileId, pageNum, dataUrl) {
 }
 
 export async function loadPageImage(fileId, pageNum) {
+  if (isNativeMode()) return nativeCall('loadPageImage', fileId, pageNum);
   if (!isDiskMode()) {
     const { loadPageImageFromOPFS } = await import('./opfsStorage');
     return await loadPageImageFromOPFS(fileId, pageNum);
@@ -339,6 +390,10 @@ export async function loadPageImage(fileId, pageNum) {
 // ── 删除 ──
 
 export async function deleteFileData(fileId) {
+  if (isNativeMode()) {
+    await nativeCall('deleteFileData', fileId);
+    return;
+  }
   if (!isDiskMode()) {
     const { deleteFileFromOPFS } = await import('./opfsStorage');
     await deleteFileFromOPFS(fileId);
@@ -366,6 +421,7 @@ async function dirSizeRecursive(dirHandle) {
 }
 
 export async function getStorageSize() {
+  if (isNativeMode()) return nativeCall('getStorageSize');
   if (!isDiskMode()) {
     const { getOPFSStorageInfo } = await import('./opfsStorage');
     const info = await getOPFSStorageInfo();
@@ -386,6 +442,7 @@ export async function getStorageSize() {
 }
 
 export async function listLocalFileIds() {
+  if (isNativeMode()) return nativeCall('listLocalFileIds');
   if (!isDiskMode()) {
     const { listOPFSFileIds } = await import('./opfsStorage');
     return await listOPFSFileIds();

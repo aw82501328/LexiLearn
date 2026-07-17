@@ -131,7 +131,7 @@ export default function LearningPage() {
   const isPdf = fileData.name.split('.').pop().toLowerCase() === 'pdf';
 
   return (
-    <div className="mx-auto w-full max-w-[90rem] px-6 py-3 h-[calc(100vh-56px)] flex flex-col">
+    <div className="mx-auto w-full max-w-[90rem] px-3 md:px-6 py-3 h-[calc(100vh-var(--tab-bar-height)-var(--safe-area-bottom))] md:h-[calc(100vh-56px)] flex flex-col">
       {/* Breadcrumb */}
       <div className="flex items-center gap-3 text-sm mb-2 shrink-0 flex-wrap">
         <span className="text-soft-white truncate max-w-[300px] mr-3">{fileData.name}</span>

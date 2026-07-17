@@ -184,7 +184,7 @@ function RoleCard({ role, readonlyMeta, onMetaChange, onLimitChange, onRemove })
       {/* Meta info (for custom roles) */}
       {!readonlyMeta && expanded && (
         <div className="px-4 pb-3 space-y-2 border-t border-white/5 pt-3 mx-4">
-          <div className="flex gap-3">
+          <div className="flex flex-col sm:flex-row gap-3">
             <div className="flex-1">
               <label className="text-[10px] text-muted-gray block mb-1">名称</label>
               <input value={role.name} onChange={(e) => onMetaChange('name', e.target.value)}
@@ -212,7 +212,7 @@ function RoleCard({ role, readonlyMeta, onMetaChange, onLimitChange, onRemove })
       {/* Limits */}
       {expanded && (
         <div className="border-t border-white/5 px-4 py-3">
-          <div className="grid grid-cols-2 gap-x-6 gap-y-2">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-2">
             {LIMIT_FIELDS.map(({ key, label, hint }) => (
               <div key={key} className="flex items-center justify-between gap-2">
                 <label className="text-[11px] text-muted-gray" title={hint}>{label}</label>

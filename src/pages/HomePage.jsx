@@ -338,7 +338,7 @@ export default function HomePage() {
     // 如果是 PDF 且没有指定模式，检查是否有保存的偏好
     if (ext === 'pdf' && !pdfMode) {
       const savedMode = getSavedPdfMode();
-      if (savedMode === 'vision' || savedMode === 'native') {
+      if (savedMode === 'vision' || savedMode === 'ocr') {
         pdfMode = savedMode;
       } else {
         // 没有偏好，弹出选择对话框
@@ -927,21 +927,21 @@ export default function HomePage() {
             </p>
 
             <div className="space-y-3 mb-5">
-              {/* Native text extraction */}
+              {/* OCR text extraction */}
               <button
-                onClick={() => handlePdfModeSelect('native')}
+                onClick={() => handlePdfModeSelect('ocr')}
                 className="w-full rounded-xl border border-emerald-500/20 bg-emerald-500/5 p-4 text-left hover:bg-emerald-500/10 hover:border-emerald-500/30 transition-all"
               >
                 <div className="flex items-center gap-3 mb-1">
-                  <span className="text-xl">📄</span>
+                  <span className="text-xl">🔍</span>
                   <div>
-                    <p className="text-sm font-semibold text-emerald-400">原生文本提取</p>
-                    <p className="text-[11px] text-muted-gray">快速 · 免费 · 无需 API</p>
+                    <p className="text-sm font-semibold text-emerald-400">OCR 文字识别</p>
+                    <p className="text-[11px] text-muted-gray">本地识别 · 免费 · 无需 API</p>
                   </div>
                 </div>
                 <p className="text-[11px] text-muted-gray/70 leading-relaxed ml-10">
-                  直接提取 PDF 内嵌文字，速度极快。适合电子书、文档等有文字层的 PDF。
-                  扫描版 PDF 可能无法提取。
+                  将 PDF 逐页渲染为图片，使用本地 OCR 引擎识别文字。
+                  适合纯文字 PDF，速度取决于设备性能。
                 </p>
               </button>
 

@@ -69,12 +69,12 @@ export async function parseFile(file, onProgress, options = {}) {
   const ext = file.name.split('.').pop().toLowerCase();
 
   if (ext === 'pdf') {
-    // 用户显式选择原生模式：跳过 LLM，直接走 pdf.js
-    if (pdfMode === 'native') {
-      const { parsePDF } = await import('./pdfParser.js');
-      return await parsePDF(file, onProgress);
+    // OCR 本地识别
+    if (pdfMode === 'ocr') {
+      const { parsePDFWithOCR } = await import('./pdfParser.js');
+      return await parsePDFWithOCR(file, onProgress);
     }
-    // 用户显式选择视觉模式：走 LLM
+    // LLM 视觉识别
     if (pdfMode === 'vision') {
       if (!isLLMConfigured()) {
         throw new Error('视觉模型未配置，请在 .env 中设置 VITE_LLM_API_KEY');
@@ -82,13 +82,13 @@ export async function parseFile(file, onProgress, options = {}) {
       const { parsePDFWithLLM } = await import('./pdfParser.js');
       return await parsePDFWithLLM(file, onProgress);
     }
-    // 自动模式（默认）：有 LLM 就用 LLM，否则回退 pdf.js
+    // 自动模式：有 LLM 就用 LLM，否则 OCR
     if (isLLMConfigured()) {
       const { parsePDFWithLLM } = await import('./pdfParser.js');
       return await parsePDFWithLLM(file, onProgress);
     }
-    const { parsePDF } = await import('./pdfParser.js');
-    return await parsePDF(file, onProgress);
+    const { parsePDFWithOCR } = await import('./pdfParser.js');
+    return await parsePDFWithOCR(file, onProgress);
   }
   if (ext === 'doc' || ext === 'docx') {
     const result = await parseWord(file);
