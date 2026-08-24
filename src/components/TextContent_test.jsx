@@ -1,4 +1,4 @@
-﻿import { useState, useCallback, useMemo, useEffect, useRef } from 'react';
+import { useState, useCallback, useMemo, useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import TranslationPopup from './TranslationPopup';
 import TTSControls from './TTSControls';
@@ -211,18 +211,11 @@ export default function TextContent({ text, fileName, toolbarNode }) {
             onFinish={handleTTSFinish}
             speed={speed}
             onSpeedChange={setSpeed}
+            autoFlip={autoFlip}
+            onAutoFlipChange={setAutoFlip}
           />
           {total > 1 && (
             <div className="flex items-center gap-3">
-              <label className="flex items-center gap-1.5 cursor-pointer select-none">
-                <input
-                  type="checkbox"
-                  checked={autoFlip}
-                  onChange={(e) => setAutoFlip(e.target.checked)}
-                  className="accent-electric-cyan h-3.5 w-3.5"
-                />
-                <span className="text-xs text-muted-gray">自动翻页</span>
-              </label>
               <span className="text-xs text-soft-white font-medium min-w-[60px] text-center">{page + 1} / {total}</span>
               <button onClick={() => handleManualPageChange(Math.max(0, page - 1))} disabled={page === 0} className="inline-flex items-center gap-1 rounded-lg border border-mid-slate px-2.5 py-1 text-xs text-muted-gray transition-all hover:border-electric-cyan/30 hover:text-electric-cyan disabled:opacity-30 disabled:cursor-not-allowed">← 上一页</button>
               <button onClick={() => handleManualPageChange(Math.min(total - 1, page + 1))} disabled={page >= total - 1} className="inline-flex items-center gap-1 rounded-lg border border-mid-slate px-2.5 py-1 text-xs text-muted-gray transition-all hover:border-electric-cyan/30 hover:text-electric-cyan disabled:opacity-30 disabled:cursor-not-allowed">下一页 →</button>

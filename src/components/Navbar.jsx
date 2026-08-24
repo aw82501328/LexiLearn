@@ -13,7 +13,6 @@ export default function Navbar() {
 
   const navLinks = [
     { to: '/', label: '首页' },
-    { to: '/practice', label: '背单词' },
     { to: '/vocabulary', label: `生词本${vocabCount > 0 ? ` (${vocabCount})` : ''}` },
     { to: '/stats', label: '统计' },
   ];
@@ -33,7 +32,7 @@ export default function Navbar() {
         <div className="flex items-center gap-1">
           {navLinks.map((link) => {
             const isActive =
-              link.to === '/practice' || link.to === '/vocabulary' || link.to === '/stats'
+              link.to === '/vocabulary' || link.to === '/stats'
                 ? location.pathname.startsWith(link.to)
                 : location.pathname === link.to;
             return (

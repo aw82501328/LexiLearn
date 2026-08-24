@@ -1,6 +1,5 @@
 import { useState, useEffect } from 'react';
 import { useParams, Link } from 'react-router-dom';
-import { lookupWord } from '../services/dictionary';
 import { translateToChinese } from '../services/translator';
 import { speakText } from '../services/tts';
 import { useApp } from '../context/AppContext';
@@ -10,7 +9,6 @@ export default function WordDetailPage() {
   const word = decodeURIComponent(encodedWord || '');
 
   const { state, removeFromVocabulary, recordTTS } = useApp();
-  const [dictData, setDictData] = useState(null);
   const [cnTranslation, setCnTranslation] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -26,22 +24,12 @@ export default function WordDetailPage() {
       setLoading(true);
       setError('');
 
-      const [dictResult, zhResult] = await Promise.allSettled([
-        lookupWord(word),
-        translateToChinese(word),
-      ]);
-
-      if (cancelled) return;
-
-      if (dictResult.status === 'fulfilled') {
-        setDictData(dictResult.value);
-      }
-      if (zhResult.status === 'fulfilled') {
-        setCnTranslation(zhResult.value);
-      }
-
-      if (dictResult.status === 'rejected' && zhResult.status === 'rejected') {
-        setError('查询失败');
+      try {
+        const zh = await translateToChinese(word);
+        if (cancelled) return;
+        setCnTranslation(zh);
+      } catch {
+        if (!cancelled) setError('查询失败');
       }
       setLoading(false);
     }
@@ -105,16 +93,6 @@ export default function WordDetailPage() {
 
           {/* Badges row */}
           <div className="flex flex-wrap items-center gap-2 mb-6">
-            {dictData?.partOfSpeech && (
-              <span className="rounded-md bg-electric-cyan/10 px-2.5 py-1 text-xs text-electric-cyan font-medium">
-                {dictData.partOfSpeech}
-              </span>
-            )}
-            {dictData?.phonetic && (
-              <span className="rounded-md bg-white/5 px-2.5 py-1 text-xs text-cyan-glow font-mono">
-                /{dictData.phonetic}/
-              </span>
-            )}
             {vocabItem && vocabItem.count > 0 && (
               <span className="rounded-md bg-white/5 px-2.5 py-1 text-xs text-muted-gray">
                 查询 {vocabItem.count} 次
@@ -128,42 +106,6 @@ export default function WordDetailPage() {
             <Section title="中文翻译">
               <p className="text-soft-white text-base">{cnTranslation || '暂无'}</p>
             </Section>
-
-            {/* English definition */}
-            {dictData?.definition && (
-              <Section title="英文释义">
-                <p className="text-muted-gray italic text-sm">"{dictData.definition}"</p>
-              </Section>
-            )}
-
-            {/* Synonyms */}
-            {dictData?.collocations?.length > 0 && (
-              <Section title="近义词">
-                <div className="flex flex-wrap gap-2">
-                  {dictData.collocations.map((s, i) => (
-                    <span
-                      key={i}
-                      className="inline-block rounded-lg bg-white/5 px-3 py-1.5 text-sm text-muted-gray"
-                    >
-                      {s}
-                    </span>
-                  ))}
-                </div>
-              </Section>
-            )}
-
-            {/* Examples */}
-            {dictData?.examples?.length > 0 && (
-              <Section title="例句">
-                <div className="space-y-3">
-                  {dictData.examples.map((ex, i) => (
-                    <p key={i} className="text-muted-gray text-sm border-l-2 border-electric-cyan/20 pl-3 italic">
-                      "{ex}"
-                    </p>
-                  ))}
-                </div>
-              </Section>
-            )}
 
             {/* Remove from vocabulary */}
             {vocabItem && (

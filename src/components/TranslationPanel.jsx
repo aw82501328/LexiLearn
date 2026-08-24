@@ -1,6 +1,5 @@
 import { useState, useEffect } from 'react';
-import { lookupWord } from '../services/dictionary';
-import { translateToChinese, translateBatch } from '../services/translator';
+import { translateToChinese } from '../services/translator';
 import { speakText, speakTextFrom } from '../services/tts';
 import { useApp } from '../context/AppContext';
 import { logActivity } from '../services/adminApi';
@@ -8,7 +7,6 @@ import { logActivity } from '../services/adminApi';
 export default function TranslationPanel({ word, mode, fullText, wordGlobalIndex, auto }) {
   const { recordTTS } = useApp();
   const [cnTranslation, setCnTranslation] = useState(null);
-  const [dictData, setDictData] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [isSpeaking, setIsSpeaking] = useState(false);
@@ -17,7 +15,6 @@ export default function TranslationPanel({ word, mode, fullText, wordGlobalIndex
   useEffect(() => {
     if (!word) {
       setCnTranslation(null);
-      setDictData(null);
       setLoading(false);
       setError('');
       return;
@@ -27,32 +24,13 @@ export default function TranslationPanel({ word, mode, fullText, wordGlobalIndex
     async function fetchAll() {
       setLoading(true);
       setError('');
-      setDictData(null);
       setCnTranslation(null);
 
       if (mode === 'word') {
         try {
-          const dict = await lookupWord(word);
+          const zh = await translateToChinese(word);
           if (cancelled) return;
-
-          // 批量翻译所有英文释义
-          const englishDefs = dict.entries.map((e) => e.english);
-          const zhMap = await translateBatch(englishDefs);
-
-          setDictData({
-            phonetic: dict.phonetic,
-            entries: dict.entries.map((e) => ({
-              ...e,
-              chinese: zhMap[e.english] || '',
-            })),
-          });
-
-          // 同时查单词本身的中文翻译作补充
-          try {
-            const zh = await translateToChinese(word);
-            if (!cancelled) setCnTranslation(zh);
-          } catch { /* ignore */ }
-
+          setCnTranslation(zh);
           setLoading(false);
           logActivity('dict', { word }).catch(() => {});
         } catch (e) {
@@ -169,7 +147,7 @@ export default function TranslationPanel({ word, mode, fullText, wordGlobalIndex
           <div className="h-4 w-1/2 shimmer rounded" />
           <div className="h-4 w-2/3 shimmer rounded" />
         </div>
-      ) : error && !dictData && !cnTranslation ? (
+      ) : error && !cnTranslation ? (
         <p className="text-red-400 text-sm py-2">{error}</p>
       ) : (
         <div className="space-y-3">
@@ -178,44 +156,10 @@ export default function TranslationPanel({ word, mode, fullText, wordGlobalIndex
             <p className="text-soft-white font-medium text-base">{word}</p>
           </div>
 
-          {dictData?.phonetic && (
-            <div>
-              <p className="text-xs text-muted-gray mb-1">音标：</p>
-              <p className="text-cyan-glow text-base">/{dictData.phonetic}/</p>
-            </div>
-          )}
-
-          {mode === 'sentence' && (
-            <div>
-              <p className="text-xs text-muted-gray mb-1">翻译：</p>
-              <p className="text-soft-white">{cnTranslation || '暂无'}</p>
-            </div>
-          )}
-
-          {mode === 'word' && dictData?.entries?.length > 0 && (
-            <div>
-              <p className="text-xs text-muted-gray mb-2">释义：</p>
-              <div className="space-y-2">
-                {dictData.entries.slice(0, 15).map((entry, i) => (
-                  <div key={i} className="rounded-lg bg-white/3 px-3 py-2">
-                    <div className="flex items-center gap-2 mb-0.5">
-                      {entry.pos && (
-                        <span className="text-[10px] px-1.5 py-0.5 rounded bg-electric-cyan/10 text-electric-cyan font-medium">
-                          {entry.pos}
-                        </span>
-                      )}
-                      <p className="text-soft-white text-xs">{entry.chinese || entry.english}</p>
-                    </div>
-                    {entry.example && (
-                      <p className="text-muted-gray text-sm mt-1 italic pl-1 border-l-2 border-white/10">
-                        {entry.example}
-                      </p>
-                    )}
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
+          <div>
+            <p className="text-xs text-muted-gray mb-1">翻译：</p>
+            <p className="text-soft-white">{cnTranslation || '暂无'}</p>
+          </div>
         </div>
       )}
     </div>

@@ -11,11 +11,6 @@ import {
   getRoleList, saveRolesConfig, deleteUser, setUserMembership,
 } from './src/services/adminServer.js';
 
-const DATA_DIR = process.env.DATA_DIR || '/root/eldata';
-const JWT_SECRET = process.env.JWT_SECRET || 'lexilearn-dev-secret';
-const USERS_FILE = path.join(DATA_DIR, 'users.json');
-const TRANSLATION_CACHE_FILE = path.join(DATA_DIR, 'translations.json');
-
 // ── 加载 .env 文件 ──
 function loadEnvFile(filepath) {
   try {
@@ -36,6 +31,11 @@ function loadEnvFile(filepath) {
   } catch {}
 }
 loadEnvFile(path.resolve(path.dirname(fileURLToPath(import.meta.url)), '.env'));
+
+const DATA_DIR = process.env.DATA_DIR || '/root/eldata';
+const JWT_SECRET = process.env.JWT_SECRET || 'lexilearn-dev-secret';
+const USERS_FILE = path.join(DATA_DIR, 'users.json');
+const TRANSLATION_CACHE_FILE = path.join(DATA_DIR, 'translations.json');
 
 const TENCENT_ID = process.env.TENCENT_SECRET_ID || '';
 const TENCENT_KEY = process.env.TENCENT_SECRET_KEY || '';

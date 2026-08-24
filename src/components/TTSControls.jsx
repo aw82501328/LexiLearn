@@ -16,6 +16,8 @@ export default function TTSControls({
   shouldAutoSpeak,
   sentencePause,
   onSentencePauseChange,
+  autoFlip,
+  onAutoFlipChange,
 }) {
   const { recordTTS } = useApp();
   const stoppedRef = useRef(false);
@@ -114,6 +116,18 @@ export default function TTSControls({
         </span>
         {isSpeaking ? '停止' : '开始朗读'}
       </button>
+
+      {onAutoFlipChange && (
+        <label className="flex items-center gap-1.5 cursor-pointer select-none">
+          <input
+            type="checkbox"
+            checked={!!autoFlip}
+            onChange={(e) => onAutoFlipChange(e.target.checked)}
+            className="accent-electric-cyan h-3.5 w-3.5"
+          />
+          <span className="text-xs text-muted-gray">自动翻页</span>
+        </label>
+      )}
 
       <div className="flex items-center gap-2">
         <span className="text-xs text-muted-gray">语速</span>

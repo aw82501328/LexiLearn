@@ -1,5 +1,4 @@
 import { useState, useEffect, useRef } from 'react';
-import { lookupWord } from '../services/dictionary';
 import { translateToChinese } from '../services/translator';
 import { speakText, speakTextFrom } from '../services/tts';
 import { useApp } from '../context/AppContext';
@@ -7,7 +6,6 @@ import { useApp } from '../context/AppContext';
 export default function TranslationPopup({ word, position, mode, onClose, fullText, wordGlobalIndex }) {
   const { recordTTS } = useApp();
   const [cnTranslation, setCnTranslation] = useState(null);
-  const [dictData, setDictData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [isSpeaking, setIsSpeaking] = useState(false);
@@ -21,30 +19,21 @@ export default function TranslationPopup({ word, position, mode, onClose, fullTe
     async function fetchAll() {
       setLoading(true);
       setError('');
-      setDictData(null);
       setCnTranslation(null);
 
       if (mode === 'word') {
-        const [dictResult, zhResult] = await Promise.allSettled([
-          lookupWord(word),
-          translateToChinese(word),
-        ]);
-
-        if (cancelled) return;
-
-        if (dictResult.status === 'fulfilled') {
-          setDictData(dictResult.value);
+        try {
+          const result = await translateToChinese(word);
+          if (!cancelled) {
+            setCnTranslation(result);
+            setLoading(false);
+          }
+        } catch (e) {
+          if (!cancelled) {
+            setError(e.message);
+            setLoading(false);
+          }
         }
-        if (zhResult.status === 'fulfilled') {
-          setCnTranslation(zhResult.value);
-        } else {
-          setCnTranslation(dictResult.value?.definition || '未找到翻译');
-        }
-
-        if (!dictResult.value && zhResult.status === 'rejected') {
-          setError('查询失败');
-        }
-        setLoading(false);
       } else {
         try {
           const result = await translateToChinese(word);
@@ -175,7 +164,7 @@ export default function TranslationPopup({ word, position, mode, onClose, fullTe
           <div className="h-4 w-1/2 shimmer rounded" />
           {mode === 'word' && <div className="h-4 w-2/3 shimmer rounded" />}
         </div>
-      ) : error && !dictData && !cnTranslation ? (
+      ) : error && !cnTranslation ? (
         <p className="text-red-400 text-sm py-2">{error}</p>
       ) : (
         <div className="space-y-3">
@@ -184,59 +173,12 @@ export default function TranslationPopup({ word, position, mode, onClose, fullTe
             <p className="text-soft-white font-medium text-base">{word}</p>
           </div>
 
-          {dictData?.partOfSpeech && (
-            <div className="inline-block rounded bg-electric-cyan/10 px-2 py-0.5">
-              <p className="text-xs text-electric-cyan">{dictData.partOfSpeech}</p>
-            </div>
-          )}
-
-          {dictData?.phonetic && (
-            <div>
-              <p className="text-xs text-muted-gray mb-1">音标：</p>
-              <p className="text-cyan-glow text-base">/{dictData.phonetic}/</p>
-            </div>
-          )}
-
           <div>
             <p className="text-xs text-muted-gray mb-1">
               {mode === 'word' ? '中文翻译：' : '翻译：'}
             </p>
             <p className="text-soft-white">{cnTranslation || '暂无'}</p>
           </div>
-
-          {mode === 'word' && dictData?.definition && (
-            <div>
-              <p className="text-xs text-muted-gray mb-1">英文释义：</p>
-              <p className="text-muted-gray text-xs">"{dictData.definition}"</p>
-            </div>
-          )}
-
-          {mode === 'word' && dictData?.collocations?.length > 0 && (
-            <div>
-              <p className="text-xs text-muted-gray mb-1">近义词：</p>
-              <div className="flex flex-wrap gap-1.5">
-                {dictData.collocations.map((c, i) => (
-                  <span
-                    key={i}
-                    className="inline-block rounded-md bg-white/5 px-2 py-0.5 text-xs text-muted-gray"
-                  >
-                    {c}
-                  </span>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {mode === 'word' && dictData?.examples?.length > 0 && (
-            <div>
-              <p className="text-xs text-muted-gray mb-1">例句：</p>
-              <div className="space-y-1">
-                {dictData.examples.map((ex, i) => (
-                  <p key={i} className="text-muted-gray italic text-xs">"{ex}"</p>
-                ))}
-              </div>
-            </div>
-          )}
         </div>
       )}
     </div>

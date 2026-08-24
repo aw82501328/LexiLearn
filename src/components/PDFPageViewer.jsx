@@ -18,7 +18,7 @@ pdfjsLib.GlobalWorkerOptions.workerSrc = new URL(
 const SCALE = 2.5;
 
 export default function PDFPageViewer({ fileId, pdfBuffer, fileName, pages, fullText, toolbarNode, onProgress, initialPage }) {
-  const { state, addToVocabulary, recordTranslation } = useApp();
+  const { state, addToVocabulary, removeFromVocabulary, recordTranslation } = useApp();
   const [pdfDoc, setPdfDoc] = useState(null);
   const [totalPages, setTotalPages] = useState(0);
   const [pageImages, setPageImages] = useState({});
@@ -232,9 +232,14 @@ export default function PDFPageViewer({ fileId, pdfBuffer, fileName, pages, full
     if (!word || word.length < 2) return;
     setWordTranslation({ word, mode: 'word' });
     setActiveTab('click');
-    addToVocabulary(word);
+    // 已加入生词本 → 再点击一次移除；未加入 → 加入
+    if (vocabSet.has(word.toLowerCase())) {
+      removeFromVocabulary(word);
+    } else {
+      addToVocabulary(word);
+    }
     recordTranslation();
-  }, [addToVocabulary, recordTranslation]);
+  }, [addToVocabulary, removeFromVocabulary, recordTranslation, vocabSet]);
 
   const handleTextMouseUp = useCallback(() => {
     const sel = window.getSelection()?.toString().trim();
@@ -294,18 +299,9 @@ export default function PDFPageViewer({ fileId, pdfBuffer, fileName, pages, full
             sentencePause={sentencePause}
             onSentencePauseChange={setSentencePause}
             shouldAutoSpeak={autoSpeakToken > 0 ? autoSpeakToken : undefined}
+            autoFlip={autoFlip}
+            onAutoFlipChange={setAutoFlip}
           />
-          <div className="flex items-center gap-3">
-            <label className="flex items-center gap-1.5 cursor-pointer select-none">
-              <input
-                type="checkbox"
-                checked={autoFlip}
-                onChange={(e) => setAutoFlip(e.target.checked)}
-                className="accent-electric-cyan h-3.5 w-3.5"
-              />
-              <span className="text-xs text-muted-gray">自动翻页</span>
-            </label>
-          </div>
         </>,
         toolbarNode,
       )}
@@ -374,8 +370,8 @@ export default function PDFPageViewer({ fileId, pdfBuffer, fileName, pages, full
                                 data-word={clean}
                                 className={`inline-block px-0.5 rounded cursor-pointer transition-colors duration-150 ${
                                   isVocab
-                                    ? 'text-red-400 bg-red-500/10 hover:bg-red-500/20 hover:text-red-300'
-                                    : 'word-hoverable hover:bg-electric-cyan/25 hover:text-cyan-glow'
+                                    ? 'text-red-400 hover:text-red-300'
+                                    : 'word-hoverable hover:text-cyan-glow'
                                 }`}
                               >
                                 {clean}

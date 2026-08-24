@@ -1,9 +1,9 @@
 import { useState, useCallback, useMemo, useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
-import TranslationPanel from './TranslationPanel';
 import TTSControls from './TTSControls';
 import { useApp } from '../context/AppContext';
 import { speakBySentences, stopTTS, getDefaultVoiceURI } from '../services/tts';
+import { translateToChinese } from '../services/translator';
 import { highlight, clearAll } from '../utils/sentenceMarker';
 
 
@@ -65,24 +65,90 @@ function splitIntoPages(paragraphs) {
   return pages;
 }
 
+/**
+ * 内联翻译组件
+ * - variant="word"：单词翻译，紧凑显示在单词正下方
+ * - variant="sentence"：整句翻译，显示在句子下方（带"译"标记）
+ */
+function InlineTranslation({ text, mode, variant = 'sentence' }) {
+  const [zh, setZh] = useState(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
+
+  useEffect(() => {
+    if (!text) {
+      setZh(null);
+      setLoading(false);
+      setError('');
+      return;
+    }
+    let cancelled = false;
+    async function fetchTranslation() {
+      setLoading(true);
+      setError('');
+      setZh(null);
+      try {
+        const result = await translateToChinese(text);
+        if (!cancelled) {
+          setZh(result);
+          setLoading(false);
+        }
+      } catch (e) {
+        if (!cancelled) {
+          setError(e.message);
+          setLoading(false);
+        }
+      }
+    }
+    fetchTranslation();
+    return () => { cancelled = true; };
+  }, [text]);
+
+  if (!text) return null;
+
+  if (variant === 'word') {
+    return (
+      <span className="text-xs text-electric-cyan leading-tight whitespace-nowrap">
+        {loading ? (
+          <span className="text-muted-gray">…</span>
+        ) : error ? (
+          <span className="text-red-400">…</span>
+        ) : (
+          zh || ''
+        )}
+      </span>
+    );
+  }
+
+  return (
+    <div className="mt-1.5 mb-1 pl-3 border-l-2 border-electric-cyan/30 text-sm">
+      <span className="text-xs text-electric-cyan font-medium mr-1.5">
+        {mode === 'word' ? '词' : '译'}
+      </span>
+      {loading ? (
+        <span className="text-muted-gray">翻译中…</span>
+      ) : error ? (
+        <span className="text-red-400">{error}</span>
+      ) : (
+        <span className="text-soft-white/90">{zh || '暂无翻译'}</span>
+      )}
+    </div>
+  );
+}
+
 export default function TextContent({ text, fileName, toolbarNode, onProgress, initialPage }) {
-  const { state, recordTranslation, addToVocabulary } = useApp();
-  const [wordTranslation, setWordTranslation] = useState(null);
-  const [sentenceTranslation, setSentenceTranslation] = useState(null);
-  const [activeTab, setActiveTab] = useState('click');
+  const { state, recordTranslation, addToVocabulary, removeFromVocabulary } = useApp();
+  const [translationTarget, setTranslationTarget] = useState(null); // { sentenceIndex, text, mode }
   const [page, setPage] = useState(initialPage >= 0 ? initialPage : 0);
   const [speaking, setSpeaking] = useState(false);
   const [speed, setSpeed] = useState(1.0);
   const [autoFlip, setAutoFlip] = useState(true);
-  const [showTranslation, setShowTranslation] = useState(true);
   const [selectedVoice, setSelectedVoice] = useState(getDefaultVoiceURI);
   const [sentencePause, setSentencePause] = useState(0);
   const [flipTarget, setFlipTarget] = useState(null);
 
-  const activeTabRef = useRef(activeTab);
-  activeTabRef.current = activeTab;
-  const showTranslationRef = useRef(showTranslation);
-  showTranslationRef.current = showTranslation;
+  const autoFlipRef = useRef(autoFlip);
+  autoFlipRef.current = autoFlip;
 
   const speedRef = useRef(speed);
   speedRef.current = speed;
@@ -97,8 +163,6 @@ export default function TextContent({ text, fileName, toolbarNode, onProgress, i
   const manualPageFlipRef = useRef(false); // 手动翻页中，阻止旧 handleTTSFinish 误触发
   const pageTransitionRef = useRef(false); // 翻页进行中，阻止快速重复点击
   const flipPendingRef = useRef(false); // setSpk ignores setIsSpeaking(false) when auto-flip queued
-  const autoFlipRef = useRef(autoFlip);
-  autoFlipRef.current = autoFlip;
   const pageRef = useRef(page);
   pageRef.current = page;
 
@@ -202,29 +266,38 @@ export default function TextContent({ text, fileName, toolbarNode, onProgress, i
     })();
   }, [page, speaking, flatSentences]);
 
-  const clickW = useCallback((w, e, idx) => {
-    setWordTranslation({ word: w, mode: 'word', wordGlobalIndex: idx });
-    setActiveTab('click');
+  const clickW = useCallback((w, e, idx, sentenceIdx) => {
+    setTranslationTarget({ sentenceIndex: sentenceIdx, wordIndex: idx, text: w, mode: 'word' });
     recordTranslation();
-    if (w.length > 1) addToVocabulary(w);
-  }, [recordTranslation, addToVocabulary]);
+    if (w.length > 1) {
+      // 已加入生词本 → 再点击一次移除；未加入 → 加入
+      if (vocabSet.has(w.toLowerCase())) {
+        removeFromVocabulary(w);
+      } else {
+        addToVocabulary(w);
+      }
+    }
+  }, [recordTranslation, addToVocabulary, removeFromVocabulary, vocabSet]);
 
   const selectS = useCallback(() => {
-    const s = window.getSelection()?.toString().trim();
+    const selection = window.getSelection();
+    const s = selection?.toString().trim();
     if (s && s.split(/\s+/).length > 1) {
-      setWordTranslation({ word: s, mode: 'sentence', wordGlobalIndex: null });
-      setActiveTab('click');
+      // 定位选区起始句子：从 anchorNode 向上找最近的 data-sentence-index 元素
+      let sentenceIndex = null;
+      const node = selection.anchorNode;
+      const el = node?.nodeType === 1 ? node : node?.parentElement;
+      const sentEl = el?.closest?.('[data-sentence-index]');
+      if (sentEl) sentenceIndex = Number(sentEl.dataset.sentenceIndex);
+
+      setTranslationTarget({ sentenceIndex, text: s, mode: 'sentence' });
       recordTranslation();
     }
   }, [recordTranslation]);
 
   const handleSentence = useCallback((sentenceIdx) => {
     highlight(textPanelRef.current, sentenceIdx);
-    // 翻译列可见且选中"自动"选项卡时才翻译
-    if (showTranslationRef.current && activeTabRef.current === 'auto' && flatSentences[sentenceIdx]) {
-      setSentenceTranslation({ word: flatSentences[sentenceIdx], mode: 'sentence', auto: true });
-    }
-  }, [flatSentences]);
+  }, []);
 
   useEffect(() => { handleSentenceRef.current = handleSentence; });
 
@@ -296,53 +369,53 @@ export default function TextContent({ text, fileName, toolbarNode, onProgress, i
             onVoiceChange={setSelectedVoice}
             sentencePause={sentencePause}
             onSentencePauseChange={setSentencePause}
+            autoFlip={autoFlip}
+            onAutoFlipChange={setAutoFlip}
           />
-          {total > 1 && (
-            <div className="flex items-center gap-3">
-              <label className="flex items-center gap-1.5 cursor-pointer select-none">
-                <input
-                  type="checkbox"
-                  checked={autoFlip}
-                  onChange={(e) => setAutoFlip(e.target.checked)}
-                  className="accent-electric-cyan h-3.5 w-3.5"
-                />
-                <span className="text-xs text-muted-gray">自动翻页</span>
-              </label>
-            </div>
-          )}
         </>,
         toolbarNode,
       )}
 
       <div className="relative flex-1 min-h-0 grid grid-cols-1 lg:grid-cols-10 gap-4">
         {/* Text content */}
-        <div className={`relative rounded-xl border border-white/5 bg-dark-slate/50 pt-6 pb-10 px-4 flex flex-col min-h-0 ${showTranslation ? 'lg:col-span-7' : 'lg:col-span-10'}`}>
+        <div className="relative rounded-xl border border-white/5 bg-dark-slate/50 pt-6 pb-10 px-4 flex flex-col min-h-0 lg:col-span-10">
           <div className="text-xs text-muted-gray mb-1.5 text-center shrink-0 h-5 flex items-center justify-center">段落</div>
           <div className="h-px bg-white/5 shrink-0 mb-4" />
           <div className="flex-1 min-h-0 overflow-y-auto rounded-b-xl">
-            <div ref={textPanelRef} className="text-[15px] leading-loose h-full" onMouseUp={selectS}>
+            <div ref={textPanelRef} className="text-[15px] leading-[2.4] h-full" onMouseUp={selectS}>
             {pp.length === 0 ? (
               <p className="text-muted-gray italic text-center py-12">文档中没有找到文本内容。</p>
             ) : (
-              blocks.map((b, bi) => (
-                <p key={bi} className="mb-6 last:mb-0">
-                  {b.wps.length <= 1
-                    ? (() => {
-                        return (
-                          <span data-sentence-index={b.startIdx} style={{ marginRight: '0.25em', padding: '3px 6px', borderRadius: '4px' }}>
-                            {b.wd.map((w) => {
+              blocks.map((b, bi) => {
+                let o = 0;
+                return (
+                  <div key={bi} className="mb-8 last:mb-0">
+                    {b.sens.map((_, si) => {
+                      const c = b.wps[si];
+                      const sw = b.wd.slice(o, o + c); o += c;
+                      const sid = b.startIdx + si;
+                      return (
+                        <div key={sid} className={si === 0 ? '' : 'mt-3'}>
+                          <span data-sentence-index={sid} className="block" style={{ padding: '2px 4px', borderRadius: '4px' }}>
+                            {sw.map((w) => {
                               const isVocab = vocabSet.has(w.cleaned.toLowerCase());
+                              const showWordTrans = translationTarget?.mode === 'word' && translationTarget?.wordIndex === w.gIdx;
                               return (
                                 <span key={w.gIdx}>
-                                  <span
-                                    className={`inline-block px-1 rounded cursor-pointer transition-colors duration-150 ${
-                                      isVocab
-                                        ? 'text-red-400 bg-red-500/10 hover:bg-red-500/20 hover:text-red-300'
-                                        : 'word-hoverable hover:bg-electric-cyan/25 hover:text-cyan-glow'
-                                    }`}
-                                    onClick={(e) => clickW(w.cleaned, e, w.gIdx)}
-                                  >
-                                    {w.cleaned}
+                                  <span className="inline-flex flex-col items-center align-bottom">
+                                    <span
+                                      className={`inline-block px-1 rounded cursor-pointer transition-colors duration-150 ${
+                                        isVocab
+                                          ? 'text-red-400 hover:text-red-300'
+                                          : 'word-hoverable hover:text-cyan-glow'
+                                      }`}
+                                      onClick={(e) => clickW(w.cleaned, e, w.gIdx, sid)}
+                                    >
+                                      {w.cleaned}
+                                    </span>
+                                    {showWordTrans && (
+                                      <InlineTranslation text={translationTarget.text} mode="word" variant="word" />
+                                    )}
                                   </span>
                                   {w.punctuation}
                                   <span> </span>
@@ -350,41 +423,15 @@ export default function TextContent({ text, fileName, toolbarNode, onProgress, i
                               );
                             })}
                           </span>
-                        );
-                      })()
-                    : (() => {
-                        let o = 0;
-                        return b.sens.map((_, si) => {
-                          const c = b.wps[si];
-                          const sw = b.wd.slice(o, o + c); o += c;
-                          const sid = b.startIdx + si;
-                          return (
-                            <span key={si} data-sentence-index={sid} style={{ marginRight: '0.25em', padding: '3px 6px', borderRadius: '4px' }}>
-                              {sw.map((w) => {
-                                const isVocab = vocabSet.has(w.cleaned.toLowerCase());
-                                return (
-                                  <span key={w.gIdx}>
-                                    <span
-                                      className={`inline-block px-1 rounded cursor-pointer transition-colors duration-150 ${
-                                        isVocab
-                                          ? 'text-red-400 bg-red-500/10 hover:bg-red-500/20 hover:text-red-300'
-                                          : 'word-hoverable hover:bg-electric-cyan/25 hover:text-cyan-glow'
-                                      }`}
-                                      onClick={(e) => clickW(w.cleaned, e, w.gIdx)}
-                                    >
-                                      {w.cleaned}
-                                    </span>
-                                    {w.punctuation}
-                                    <span> </span>
-                                  </span>
-                                );
-                              })}
-                            </span>
-                          );
-                        });
-                      })()}
-                </p>
-              ))
+                          {translationTarget?.mode === 'sentence' && translationTarget?.sentenceIndex === sid && (
+                            <InlineTranslation text={translationTarget.text} mode="sentence" />
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                );
+              })
             )}
           </div>
           </div>
@@ -417,62 +464,6 @@ export default function TextContent({ text, fileName, toolbarNode, onProgress, i
             </div>
           )}
         </div>
-
-    {/* Right: Translation panel */}
-    {showTranslation && (
-    <div className="relative lg:col-span-3 rounded-xl border border-white/5 bg-dark-slate/50 overflow-hidden flex flex-col min-h-0 p-2">
-          <div className="flex shrink-0 rounded-lg bg-white/5 p-0.5 mb-1.5 h-5 items-center gap-0.5">
-            <button
-              onClick={() => setShowTranslation(false)}
-              className="w-5 h-full rounded-md flex items-center justify-center text-muted-gray/50 hover:text-electric-cyan hover:bg-electric-cyan/10 transition-all shrink-0"
-              title="隐藏翻译"
-            >
-              <svg xmlns="http://www.w3.org/2000/svg" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="13 17 18 12 13 7"/><polyline points="6 17 11 12 6 7"/></svg>
-            </button>
-            <button
-              onClick={() => setActiveTab('click')}
-              className={`flex-1 rounded-md py-0.5 px-3 text-xs font-medium transition-all ${
-                activeTab === 'click'
-                  ? 'bg-electric-cyan/20 text-electric-cyan'
-                  : 'text-muted-gray hover:text-soft-white'
-              }`}
-            >
-              点击
-            </button>
-            <button
-              onClick={() => setActiveTab('auto')}
-              className={`flex-1 rounded-md py-0.5 px-3 text-xs font-medium transition-all ${
-                activeTab === 'auto'
-                  ? 'bg-electric-cyan/20 text-electric-cyan'
-                  : 'text-muted-gray hover:text-soft-white'
-              }`}
-            >
-              自动
-            </button>
-          </div>
-          <div className="h-px bg-white/5 shrink-0" />
-          <div className="flex-1 min-h-0">
-            <TranslationPanel
-              word={activeTab === 'click' ? (wordTranslation?.word || null) : (sentenceTranslation?.word || null)}
-              mode={activeTab === 'click' ? (wordTranslation?.mode || 'word') : 'sentence'}
-              fullText={activeTab === 'click' ? pt : undefined}
-              wordGlobalIndex={activeTab === 'click' ? (wordTranslation?.wordGlobalIndex ?? undefined) : undefined}
-              auto={activeTab === 'auto'}
-            />
-          </div>
-        </div>
-    )}
-
-    {/* Show toggle when hidden */}
-    {!showTranslation && (
-      <button
-        onClick={() => setShowTranslation(true)}
-        className="absolute right-0 -translate-x-1/2 top-1.5 w-7 h-7 rounded-full bg-dark-slate/70 border border-white/10 flex items-center justify-center text-muted-gray/60 hover:text-electric-cyan hover:bg-dark-slate/90 hover:border-electric-cyan/20 transition-all z-10"
-        title="显示翻译"
-      >
-        <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="11 17 6 12 11 7"/><polyline points="18 17 13 12 18 7"/></svg>
-      </button>
-    )}
       </div>
     </div>
   );
