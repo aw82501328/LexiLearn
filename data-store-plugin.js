@@ -7,7 +7,7 @@ import jwt from 'jsonwebtoken';
 import {
   isAdmin, setUserRole, getUserList,
   logActivity, incrementUsage, getUsage, loadLimits, saveLimits, checkQuota, checkFileSize,
-  getUserDaily, getUserActivity, getGlobalStats,
+  getUserDaily, getUserActivity, getGlobalStats, getUserTodayStats,
   getRoleList, saveRolesConfig, deleteUser, setUserMembership,
 } from './src/services/adminServer.js';
 
@@ -398,6 +398,14 @@ export default function dataStorePlugin() {
         const limits = loadLimits(DATA_DIR, payload.userId);
         const usage = getUsage(DATA_DIR, payload.userId);
         return json(res, { limits, usage });
+      });
+
+      // 用户今日数据（阅读时长/阅读单词数/翻译单词数）
+      server.middlewares.use('/api/user/daily', (req, res) => {
+        if (req.method !== 'GET') return json(res, { error: 'Method Not Allowed' }, 405);
+        const payload = verifyToken(req);
+        if (!payload) return json(res, { error: '未登录' }, 401);
+        return json(res, getUserTodayStats(DATA_DIR, payload.userId));
       });
 
       // ── 管理 API ──

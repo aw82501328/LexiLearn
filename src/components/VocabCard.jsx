@@ -41,10 +41,12 @@ export default function VocabCard({ item, onRemove }) {
     >
       <button
         onClick={handleRemove}
-        className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity text-muted-gray hover:text-red-400 text-xs"
-        title="移除"
+        className="absolute top-2 right-2 flex h-6 w-6 items-center justify-center rounded-md border border-red-400/30 bg-red-500/10 text-red-400 hover:bg-red-500/25 hover:border-red-400/60 hover:text-red-300 transition-all duration-200"
+        title="移除生词"
       >
-        ✕
+        <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+          <polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/>
+        </svg>
       </button>
 
       <div className="text-center">

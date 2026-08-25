@@ -65,6 +65,21 @@ function stripExtension(name) {
   return idx > 0 ? name.slice(0, idx) : name;
 }
 
+/** 相对时间显示：刚刚 / x 分钟前 / x 小时前 / x 天前 / 日期 */
+function formatRelativeTime(ts) {
+  if (!ts) return '';
+  const diff = Date.now() - ts;
+  const min = Math.floor(diff / 60000);
+  if (min < 1) return '刚刚';
+  if (min < 60) return `${min} 分钟前`;
+  const hour = Math.floor(min / 60);
+  if (hour < 24) return `${hour} 小时前`;
+  const day = Math.floor(hour / 24);
+  if (day < 30) return `${day} 天前`;
+  const d = new Date(ts);
+  return `${d.getMonth() + 1}月${d.getDate()}日`;
+}
+
 const STOP_WORDS = new Set([
   'the', 'and', 'for', 'are', 'but', 'not', 'you', 'all', 'can', 'had',
   'her', 'was', 'one', 'our', 'out', 'has', 'have', 'its', 'his', 'how',
@@ -156,9 +171,11 @@ export default function HomePage() {
   const mergeActionRef = useRef(null);
   const forceGroupKeyRef = useRef(null);
   const [mergeTick, setMergeTick] = useState(0);
+  const [confirmDeleteGroup, setConfirmDeleteGroup] = useState(null); // 待确认删除的整套书（多册组合）
 
   // ── local multi-file upload state ──
   const [uploadTasks, setUploadTasks] = useState([]);
+  const cancelledTaskIdsRef = useRef(new Set()); // 已取消上传的任务 id 集合（用于解析完成后撤销）
 
   // ── PDF mode selection dialog ──
   const [pdfModeDialog, setPdfModeDialog] = useState({ open: false, file: null, group: null });
@@ -284,6 +301,23 @@ export default function HomePage() {
     deleteContent(fileId).catch((e) => console.warn('删除文件失败:', e.message));
   };
 
+  // 删除整套书（多册组合）：逐本删除
+  const handleDeleteGroup = useCallback((group) => {
+    group.books.forEach((b) => {
+      deleteFile(b.id);
+      deleteContent(b.id).catch((e) => console.warn('删除文件失败:', e.message));
+    });
+    // 若当前正展开该系列，关闭展开
+    setExpandedSeriesKey((k) => (k === group.key ? null : k));
+    setConfirmDeleteGroup(null);
+  }, [deleteFile]);
+
+  // 取消进行中的上传/识别任务：立即移除卡片，并标记取消（解析完成后自动撤销已保存的文件）
+  const handleCancelUpload = useCallback((taskId) => {
+    cancelledTaskIdsRef.current.add(taskId);
+    setUploadTasks((prev) => prev.filter((t) => t.id !== taskId));
+  }, []);
+
   const handleStartRename = useCallback((e, file) => {
     e.stopPropagation();
     const displayName = stripExtension(file.name);
@@ -363,6 +397,15 @@ export default function HomePage() {
       const tHook = performance.now();
       const fileId = await handleFileParsed(result, file);
       console.log('[perf] handleFileParsed:', (performance.now() - tHook).toFixed(0), 'ms');
+
+      // 若用户已在上传过程中点击删除，撤销刚保存的文件与元数据
+      if (cancelledTaskIdsRef.current.has(taskId)) {
+        cancelledTaskIdsRef.current.delete(taskId);
+        deleteFile(fileId);
+        deleteContent(fileId).catch((e) => console.warn('清理已取消的上传文件失败:', e.message));
+        return;
+      }
+
       setUploadTasks(prev => prev.filter(t => t.id !== taskId));
 
       if (forceGroup) {
@@ -372,6 +415,12 @@ export default function HomePage() {
         setMergeTick(t => t + 1);
       }
     } catch (e) {
+      // 用户已取消该上传：不显示错误卡片
+      if (cancelledTaskIdsRef.current.has(taskId)) {
+        cancelledTaskIdsRef.current.delete(taskId);
+        setUploadTasks(prev => prev.filter(t => t.id !== taskId));
+        return;
+      }
       setUploadTasks(prev => prev.map(t => t.id === taskId ? { ...t, error: e.status === 429 ? e.message : '文件解析失败：' + e.message } : t));
     }
   }, [handleFileParsed]);
@@ -389,6 +438,16 @@ export default function HomePage() {
   }
 
   const hasBooks = state.fileHistory.length > 0;
+
+  // ── 最近阅读：按打开时间排序取前 3 本（有阅读进度的优先显示）──
+  const recentBooks = useMemo(() => {
+    const read = state.fileHistory.filter((f) => f.readingProgress && f.readingProgress.page > 0);
+    const pool = read.length > 0 ? read : state.fileHistory;
+    return [...pool]
+      .filter((f) => f.openedAt)
+      .sort((a, b) => b.openedAt - a.openedAt)
+      .slice(0, 3);
+  }, [state.fileHistory]);
 
   // ── helper: render a single book card (used in expanded view) ──
   const renderBookCard = (file, groupColor = null) => {
@@ -508,6 +567,10 @@ export default function HomePage() {
                 ) : (
                   <p className="text-muted-gray text-xs">正在处理文件...</p>
                 )}
+                <button
+                  onClick={() => handleCancelUpload(task.id)}
+                  className="text-[11px] px-2.5 py-1 rounded-md bg-red-400/10 text-red-400 hover:bg-red-400/20 transition-all"
+                >删除</button>
               </>
             )}
           </div>
@@ -580,6 +643,10 @@ export default function HomePage() {
         ) : (
           <p className="text-muted-gray text-xs">正在处理文件...</p>
         )}
+        <button
+          onClick={() => handleCancelUpload(task.id)}
+          className="text-[11px] px-2.5 py-1 rounded-md bg-red-400/10 text-red-400 hover:bg-red-400/20 transition-all"
+        >删除</button>
       </div>
     );
   };
@@ -708,6 +775,17 @@ export default function HomePage() {
           <div className="h-64 flex items-center justify-center">{renderCategoryUploadContent(activeUploadTask)}</div>
         ) : (
           <div className="h-64 p-3 flex flex-col items-center justify-center">
+            {/* 删除整套书 */}
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                setConfirmDeleteGroup(group);
+              }}
+              className="absolute top-2 right-2 z-30 flex h-7 w-7 items-center justify-center rounded-md border border-white/10 bg-dark-slate/70 text-muted-gray/60 opacity-0 group-hover/series:opacity-100 hover:border-red-400/40 hover:bg-red-500/10 hover:text-red-400 transition-all duration-200"
+              title="删除整套书"
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/><line x1="10" y1="11" x2="10" y2="17"/><line x1="14" y1="11" x2="14" y2="17"/></svg>
+            </button>
             <div className="relative w-full max-w-[115px] h-52">
               {stackBooks.map((file, idx) => {
                 const isPdf = (file.name || '').split('.').pop().toLowerCase() === 'pdf';
@@ -895,6 +973,61 @@ export default function HomePage() {
         </div>
       </div>
 
+      {/* 最近阅读 */}
+      {recentBooks.length > 0 && (
+        <div className="mb-12 animate-slide-up">
+          <div className="flex items-center gap-4 mb-5">
+            <div className="h-8 w-1.5 rounded-full bg-gradient-to-b from-violet-400 to-purple-500" />
+            <div className="flex-1">
+              <h2 className="text-xl font-bold text-soft-white">最近阅读</h2>
+              <p className="text-sm text-muted-gray mt-0.5">继续上次的阅读进度</p>
+            </div>
+          </div>
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+            {recentBooks.map((file, idx) => {
+              const config = getFileTypeConfig(file.name);
+              const displayName = stripExtension(file.name);
+              const isPdf = config.label === 'PDF';
+              const thumbnail = pdfThumbnails[file.id];
+              const progress = file.readingProgress;
+              const pct = progress && progress.total > 0 ? Math.round((progress.page / progress.total) * 100) : 0;
+              return (
+                <div
+                  key={file.id}
+                  onClick={() => handleOpenFile(file)}
+                  className="group relative cursor-pointer rounded-xl overflow-hidden border border-white/10 bg-dark-slate/40 hover:border-electric-cyan/30 transition-all duration-300 hover:-translate-y-1"
+                >
+                  {/* 封面缩略图 */}
+                  <div className="relative h-24">
+                    {isPdf && thumbnail ? (
+                      <div
+                        className="absolute inset-0"
+                        style={{ backgroundImage: `url(${thumbnail})`, backgroundSize: 'cover', backgroundPosition: 'center' }}
+                      />
+                    ) : (
+                      <div className={`absolute inset-0 bg-gradient-to-br ${GROUP_COLORS[idx % GROUP_COLORS.length].overlay}`} />
+                    )}
+                    <div className="absolute inset-0 bg-gradient-to-t from-dark-slate via-dark-slate/20 to-transparent" />
+                    <span className="absolute top-2 left-2 text-[10px] px-2 py-0.5 rounded-full bg-dark-slate/70 border border-white/10 text-muted-gray font-medium backdrop-blur-sm">{config.label}</span>
+                    <span className="absolute top-2 right-2 text-[10px] px-2 py-0.5 rounded-full bg-dark-slate/70 border border-white/10 text-violet-300 font-medium backdrop-blur-sm">{pct}%</span>
+                  </div>
+                  {/* 书名 + 进度 */}
+                  <div className="p-3">
+                    <p className="text-sm font-semibold text-soft-white truncate">{displayName}</p>
+                    <div className="mt-2 flex items-center gap-2">
+                      <div className="flex-1 h-1 rounded-full bg-white/5 overflow-hidden">
+                        <div className="h-full bg-gradient-to-r from-violet-400 to-purple-500 transition-all duration-500" style={{ width: `${pct}%` }} />
+                      </div>
+                      <span className="text-[10px] text-muted-gray/60 shrink-0">{formatRelativeTime(file.openedAt)}</span>
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
       {/* Features grid */}
       <div className="mt-16 grid grid-cols-1 sm:grid-cols-3 gap-6">
         {[
@@ -985,6 +1118,45 @@ export default function HomePage() {
             >
               取消
             </button>
+          </div>
+        </div>
+      )}
+      {/* ── 删除整套书二次确认弹窗 ── */}
+      {confirmDeleteGroup && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
+          <div className="mx-4 w-full max-w-sm rounded-2xl border border-white/10 bg-dark-slate p-6 shadow-2xl">
+            <div className="flex items-center gap-3 mb-4">
+              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-red-500/10 text-red-400">
+                <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/><line x1="10" y1="11" x2="10" y2="17"/><line x1="14" y1="11" x2="14" y2="17"/></svg>
+              </div>
+              <div>
+                <h2 className="text-base font-bold text-soft-white">删除整套书？</h2>
+                <p className="text-xs text-muted-gray mt-0.5">该操作不可撤销</p>
+              </div>
+            </div>
+            <p className="text-sm text-muted-gray mb-1">
+              将删除「<span className="text-soft-white">{confirmDeleteGroup.name}</span>」中的全部{' '}
+              <span className="text-red-400 font-medium">{confirmDeleteGroup.books.length}</span> 本书：
+            </p>
+            <div className="max-h-28 overflow-y-auto rounded-lg border border-white/5 bg-black/20 p-2 mb-5 space-y-1">
+              {confirmDeleteGroup.books.map((b) => (
+                <p key={b.id} className="text-xs text-muted-gray/80 truncate">· {b.name}</p>
+              ))}
+            </div>
+            <div className="flex gap-3">
+              <button
+                onClick={() => setConfirmDeleteGroup(null)}
+                className="flex-1 rounded-lg border border-white/5 px-4 py-2 text-xs text-muted-gray hover:text-soft-white hover:border-white/15 transition-all"
+              >
+                取消
+              </button>
+              <button
+                onClick={() => handleDeleteGroup(confirmDeleteGroup)}
+                className="flex-1 rounded-lg bg-red-500/15 px-4 py-2 text-xs font-medium text-red-400 hover:bg-red-500/25 transition-all border border-red-500/20"
+              >
+                确认删除
+              </button>
+            </div>
           </div>
         </div>
       )}

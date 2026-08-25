@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { speakBySentences, stopTTS } from '../services/tts';
+import { speakBySentences, stopTTS, pauseTTS, resumeTTS } from '../services/tts';
 import { useApp } from '../context/AppContext';
 import { logActivity } from '../services/adminApi';
 
@@ -14,10 +14,14 @@ export default function TTSControls({
   voice,
   onVoiceChange,
   shouldAutoSpeak,
+  onAutoSpeakConsumed,
+  onStop,
   sentencePause,
   onSentencePauseChange,
   autoFlip,
   onAutoFlipChange,
+  isPaused: isPausedProp,
+  onPausedChange,
 }) {
   const { recordTTS } = useApp();
   const stoppedRef = useRef(false);
@@ -30,6 +34,13 @@ export default function TTSControls({
 
   const [voices, setVoices] = useState([]);
   const voiceInitedRef = useRef(false);
+  const [isPausedInternal, setIsPausedInternal] = useState(false); // 是否处于暂停状态（内部兜底）
+  // 受控优先：父组件传入 isPausedProp 时以它为准（用于点击单词/句子时切换为暂停）
+  const isPaused = isPausedProp !== undefined ? isPausedProp : isPausedInternal;
+  const setPaused = useCallback((v) => {
+    if (onPausedChange) onPausedChange(v);
+    else setIsPausedInternal(v);
+  }, [onPausedChange]);
 
   const TARGET_NAMES = [
     { name: 'Microsoft Ava Multilingual Online (Natural) - English (United States)',    label: 'Ava（女声）' },
@@ -70,20 +81,24 @@ export default function TTSControls({
   const doSpeak = useCallback(async () => {
     stoppedRef.current = false;
     stopTTS();
+    setPaused(false);
     setIsSpeaking(true);
     logActivity('tts', { text: text.slice(0, 100) }).catch(() => {});
     try {
-      await speakBySentences(text, () => speedRef.current, (idx) => onSentenceRef.current?.(idx), () => voiceRef.current, () => sentencePauseRef.current);
-      if (!stoppedRef.current) {
+      // finished 为 false 表示朗读被中断（用户停止/翻页等），不应触发 onFinish（避免误 autoFlip）
+      const finished = await speakBySentences(text, () => speedRef.current, (idx) => onSentenceRef.current?.(idx), () => voiceRef.current, () => sentencePauseRef.current);
+      if (finished && !stoppedRef.current) {
         recordTTS();
+        // 朗读未停止即自然读完本页：交由父组件 handleTTSFinish 按「自动翻页」勾选决定是否翻页
         onFinishRef.current?.();
       }
     } catch {
       // swallow
     } finally {
+      setPaused(false);
       setIsSpeaking(false);
     }
-  }, [text, setIsSpeaking, recordTTS]);
+  }, [text, setIsSpeaking, recordTTS, setPaused]);
 
   const handleSpeakRef = useRef(doSpeak);
   useEffect(() => { handleSpeakRef.current = doSpeak; });
@@ -91,30 +106,47 @@ export default function TTSControls({
   const handleStop = useCallback(() => {
     stoppedRef.current = true;
     stopTTS();
+    setPaused(false);
     setIsSpeaking(false);
-  }, [setIsSpeaking]);
+    onStop?.(); // 通知父组件：用户显式停止，需清除翻页队列
+  }, [setIsSpeaking, onStop, setPaused]);
+
+  // 暂停 / 恢复
+  const handlePauseToggle = useCallback(() => {
+    if (isPaused) {
+      resumeTTS();
+      setPaused(false);
+    } else {
+      pauseTTS();
+      setPaused(true);
+    }
+  }, [isPaused, setPaused]);
 
   useEffect(() => {
     if (shouldAutoSpeak) {
-      const t = setTimeout(() => handleSpeakRef.current(), 100);
+      const t = setTimeout(() => {
+        // 手动翻页触发的朗读：读完本页后同样交给 onFinish 判断自动翻页
+        handleSpeakRef.current();
+        onAutoSpeakConsumed?.(); // 通知父组件：本次自动朗读已消费
+      }, 100);
       return () => clearTimeout(t);
     }
-  }, [shouldAutoSpeak]);
+  }, [shouldAutoSpeak, onAutoSpeakConsumed]);
 
   return (
     <div className="flex items-center gap-3 flex-wrap">
       <button
-        onClick={isSpeaking ? handleStop : () => handleSpeakRef.current()}
+        onClick={isSpeaking ? handlePauseToggle : () => handleSpeakRef.current()}
         className={`inline-flex items-center gap-1.5 rounded-md px-3 py-1 text-xs font-medium transition-all duration-200 ${
           isSpeaking
-            ? 'bg-red-500/20 text-red-400 border border-red-500/30'
+            ? 'bg-amber-500/20 text-amber-400 border border-amber-500/30'
             : 'bg-electric-cyan/10 text-electric-cyan border border-electric-cyan/20 hover:bg-electric-cyan/20 hover:shadow-[0_0_20px_rgba(45,212,191,0.2)]'
         }`}
       >
-        <span className={isSpeaking ? 'animate-pulse' : ''}>
-          {isSpeaking ? '⏹' : '▶'}
+        <span className={isSpeaking && !isPaused ? 'animate-pulse' : ''}>
+          {isSpeaking ? (isPaused ? '▶' : '⏸') : '▶'}
         </span>
-        {isSpeaking ? '停止' : '开始朗读'}
+        {isSpeaking ? (isPaused ? '继续' : '暂停') : '开始朗读'}
       </button>
 
       {onAutoFlipChange && (

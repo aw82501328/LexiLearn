@@ -97,6 +97,13 @@ body {
   animation: sentence-pulse 0.8s ease-out;
 }
 
+/* 整句选择翻译 — 句子级连续高亮（单词之间无间隙） */
+.sentence-selected {
+  background: rgba(45, 212, 191, 0.16);
+  border-radius: 6px;
+  box-shadow: inset 0 0 0 1px rgba(45, 212, 191, 0.35);
+}
+
 @keyframes sentence-pulse {
   0% { background: rgba(45, 212, 191, 0.40); box-shadow: 0 0 30px rgba(45, 212, 191, 0.30); }
   100% { background: linear-gradient(90deg, rgba(45, 212, 191, 0.25), rgba(94, 234, 212, 0.10)); box-shadow: 0 0 20px rgba(45, 212, 191, 0.15); }

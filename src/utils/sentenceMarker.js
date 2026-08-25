@@ -8,6 +8,7 @@
  */
 
 const ACTIVE_CLASS = 'sentence-glow';
+const SELECTED_CLASS = 'sentence-selected';
 
 export function highlight(container, index) {
   if (!container) return;
@@ -22,4 +23,19 @@ export function highlight(container, index) {
 export function clearAll(container) {
   if (!container) return;
   container.querySelectorAll('.' + ACTIVE_CLASS).forEach(el => el.classList.remove(ACTIVE_CLASS));
+}
+
+// 整句选择翻译：给整个句子容器加连续高亮（单词之间无间隙）
+export function selectSentence(container, index) {
+  if (!container) return;
+  clearAll(container); // 清除朗读高亮，避免叠加
+  const prev = container.querySelector('.' + SELECTED_CLASS);
+  if (prev) prev.classList.remove(SELECTED_CLASS);
+  const target = container.querySelector(`[data-sentence-index="${index}"]`);
+  if (target) target.classList.add(SELECTED_CLASS);
+}
+
+export function clearSentenceSelection(container) {
+  if (!container) return;
+  container.querySelectorAll('.' + SELECTED_CLASS).forEach(el => el.classList.remove(SELECTED_CLASS));
 }

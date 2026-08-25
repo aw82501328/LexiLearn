@@ -118,6 +118,10 @@ export default function PDFPageViewer({ fileId, pdfBuffer, fileName, pages, full
       flipPendingRef.current = true;
       setPage(p => p + 1);
       setAutoSpeakToken(t => t + 1);
+    } else {
+      // 未勾选自动翻页或已是最后一页：结束朗读
+      flipPendingRef.current = false;
+      setSpeaking(false);
     }
   }, [autoFlip, page, totalPages]);
 
@@ -223,6 +227,12 @@ export default function PDFPageViewer({ fileId, pdfBuffer, fileName, pages, full
     }
   }, [page, totalPages, onProgress]);
 
+  // 翻页时清空翻译面板，避免残留上一页的翻译
+  useEffect(() => {
+    setWordTranslation(null);
+    setSentenceTranslation(null);
+  }, [page]);
+
   useEffect(() => () => stopTTS(), []);
 
   const handleWordClick = useCallback((e) => {
@@ -299,6 +309,11 @@ export default function PDFPageViewer({ fileId, pdfBuffer, fileName, pages, full
             sentencePause={sentencePause}
             onSentencePauseChange={setSentencePause}
             shouldAutoSpeak={autoSpeakToken > 0 ? autoSpeakToken : undefined}
+            onAutoSpeakConsumed={() => {
+              // 手动/自动翻页后的自动朗读已启动：消费翻页标记，允许页尾继续自动翻页
+              manualPageFlipRef.current = false;
+              pageTransitionRef.current = false;
+            }}
             autoFlip={autoFlip}
             onAutoFlipChange={setAutoFlip}
           />

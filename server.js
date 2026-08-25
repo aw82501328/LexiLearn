@@ -10,7 +10,7 @@ import jwt from 'jsonwebtoken';
 import {
   isAdmin, setUserRole, getUserList,
   logActivity, incrementUsage, getUsage, loadLimits, saveLimits, checkQuota, checkFileSize,
-  getUserDaily, getUserActivity, getGlobalStats, rebuildGlobalStats,
+  getUserDaily, getUserActivity, getGlobalStats, rebuildGlobalStats, getUserTodayStats,
   getRoleList, saveRolesConfig, deleteUser, setUserMembership,
 } from './src/services/adminServer.js';
 
@@ -604,6 +604,12 @@ const handleRequest = async (req, res) => {
     const limits = loadLimits(DATA_DIR, auth.userId);
     const usage = getUsage(DATA_DIR, auth.userId);
     return json(res, { limits, usage });
+  }
+
+  // GET /api/user/daily  — 今日数据（阅读时长/阅读单词数/翻译单词数）
+  if (req.method === 'GET' && req.url === '/api/user/daily') {
+    if (!auth) return json(res, { error: '未登录' }, 401);
+    return json(res, getUserTodayStats(DATA_DIR, auth.userId));
   }
 
   // ── 管理 API ──

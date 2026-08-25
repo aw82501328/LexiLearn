@@ -1,18 +1,37 @@
 let currentUtterance = null;
 let _ttsActive = false;
 let _ttsStopped = false;
+let _ttsPaused = false;
 let _pauseResolver = null;
 
 export function stopTTS() {
   _ttsStopped = true;
   _ttsActive = false;
+  _ttsPaused = false;
   if (_pauseResolver) {
     _pauseResolver();
     _pauseResolver = null;
   }
-  if (currentUtterance) {
+  // 无论是否跟踪到 utterance，都清空整个语音队列，确保单词/句子发音也能被停止
+  if (typeof window !== 'undefined' && window.speechSynthesis) {
     window.speechSynthesis.cancel();
-    currentUtterance = null;
+  }
+  currentUtterance = null;
+}
+
+/** 暂停朗读（保留位置，可恢复） */
+export function pauseTTS() {
+  _ttsPaused = true;
+  if (typeof window !== 'undefined' && window.speechSynthesis) {
+    window.speechSynthesis.pause();
+  }
+}
+
+/** 恢复朗读 */
+export function resumeTTS() {
+  _ttsPaused = false;
+  if (typeof window !== 'undefined' && window.speechSynthesis) {
+    window.speechSynthesis.resume();
   }
 }
 
@@ -52,6 +71,11 @@ export async function speakBySentences(textOrSentences, speed, onSentence, voice
   for (let i = 0; i < sentences.length; i++) {
     if (_ttsStopped) break;
     onSentence?.(i);
+    // 若处于暂停状态，等待恢复（重新 resume 播放）
+    while (_ttsPaused && !_ttsStopped) {
+      await new Promise((r) => setTimeout(r, 100));
+    }
+    if (_ttsStopped) break;
     try {
       await speakSingleUtterance(null, sentences[i], getSpeed(), getVoice());
     } catch {
@@ -70,24 +94,36 @@ export async function speakBySentences(textOrSentences, speed, onSentence, voice
     }
   }
 
-  _ttsActive = false;
-}
-
-export async function speakText(_apiKey, text, speed, onWord) {
-  if (_ttsActive) return;
-  _ttsActive = true;
-  _ttsStopped = false;
-  speed = speed || 1.0;
-
-  if (!text.trim()) {
-    _ttsActive = false;
-    return;
+  // 循环结束后：若被打断为暂停（点击单词/句子），等待恢复后再收尾
+  while (_ttsPaused && !_ttsStopped) {
+    await new Promise((r) => setTimeout(r, 100));
   }
 
+  _ttsActive = false;
+  // 返回是否自然完成：被 stopTTS 中断时返回 false，调用方据此决定是否触发 onFinish
+  return !_ttsStopped;
+}
+
+export async function speakText(_apiKey, text, speed, voiceName) {
+  speed = speed || 1.0;
+
+  if (!text.trim()) return;
+
+  // 单独发音（单词/句子）：若主朗读正在进行中，将其切换为暂停（而非继续往后读）。
+  // 仅置位 _ttsPaused 标志，让 speakBySentences 主循环在下一句边界等待；不调用
+  // speechSynthesis.pause()，以免影响紧随其后的单词/句子单独发音。
+  if (_ttsActive && !_ttsStopped) {
+    _ttsPaused = true;
+  }
+
+  // 打断当前正在播放的语音（主朗读的当前句会被 cancel，主循环随后在下一句边界暂停等待）
+  if (typeof window !== 'undefined' && window.speechSynthesis) {
+    window.speechSynthesis.cancel();
+  }
   try {
-    await speakSingleUtterance(null, text, speed);
-  } finally {
-    _ttsActive = false;
+    await speakSingleUtterance(null, text, speed, voiceName);
+  } catch {
+    // 忽略
   }
 }
 

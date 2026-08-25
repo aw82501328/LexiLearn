@@ -398,14 +398,14 @@ export function logActivity(DATA_DIR, userId, type, data = {}) {
 
   fs.writeFileSync(f, JSON.stringify(activities), 'utf-8');
 
-  updateDailyStats(DATA_DIR, userId, type);
+  updateDailyStats(DATA_DIR, userId, type, data);
 
   return activities.length;
 }
 
 // ── 每日聚合 ──
 
-function updateDailyStats(DATA_DIR, userId, type) {
+function updateDailyStats(DATA_DIR, userId, type, data = {}) {
   const userDir = path.join(DATA_DIR, userId);
   ensureDir(userDir);
   const f = path.join(userDir, '_daily.json');
@@ -416,19 +416,29 @@ function updateDailyStats(DATA_DIR, userId, type) {
     if (fs.existsSync(f)) daily = JSON.parse(fs.readFileSync(f, 'utf-8'));
   } catch {}
 
-  if (!daily[date]) daily[date] = { uploads: 0, translations: 0, tts: 0, dictionary: 0, practice: 0, logins: 0 };
+  if (!daily[date]) {
+    daily[date] = { uploads: 0, translations: 0, tts: 0, dictionary: 0, practice: 0, logins: 0, readingMinutes: 0, wordsRead: 0, translatedWords: 0, translatedSentences: 0 };
+  }
 
   const mapping = {
     upload: 'uploads',
     translate: 'translations',
+    translateWord: 'translatedWords',
+    translateSentence: 'translatedSentences',
     tts: 'tts',
     dict: 'dictionary',
     practice: 'practice',
     login: 'logins',
   };
 
-  const field = mapping[type];
-  if (field) daily[date][field] = (daily[date][field] || 0) + 1;
+  if (type === 'reading') {
+    // 阅读时长（分钟）与阅读单词数累加
+    daily[date].readingMinutes = (daily[date].readingMinutes || 0) + (Number(data.minutes) || 0);
+    daily[date].wordsRead = (daily[date].wordsRead || 0) + (Number(data.words) || 0);
+  } else {
+    const field = mapping[type];
+    if (field) daily[date][field] = (daily[date][field] || 0) + 1;
+  }
 
   const keys = Object.keys(daily).sort();
   while (keys.length > 120) {
@@ -437,6 +447,25 @@ function updateDailyStats(DATA_DIR, userId, type) {
 
   fs.writeFileSync(f, JSON.stringify(daily), 'utf-8');
   return daily;
+}
+
+/** 获取用户今日数据（阅读时长/阅读单词数/翻译单词数等） */
+export function getUserTodayStats(DATA_DIR, userId) {
+  const daily = getUserDaily(DATA_DIR, userId);
+  const d = today();
+  const s = daily[d] || {};
+  return {
+    date: d,
+    readingMinutes: s.readingMinutes || 0,
+    wordsRead: s.wordsRead || 0,
+    translations: s.translations || 0,
+    translatedWords: s.translatedWords || 0,
+    translatedSentences: s.translatedSentences || 0,
+    uploads: s.uploads || 0,
+    tts: s.tts || 0,
+    dictionary: s.dictionary || 0,
+    practice: s.practice || 0,
+  };
 }
 
 export function getUserDaily(DATA_DIR, userId) {

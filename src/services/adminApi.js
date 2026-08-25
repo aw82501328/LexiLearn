@@ -43,6 +43,11 @@ export async function getUserLimits() {
   return fetchJSON(`${API_BASE}/user/limits`, { headers: headers() });
 }
 
+// 用户今日数据（阅读时长/阅读单词数/翻译单词数）
+export async function getUserTodayStats() {
+  return fetchJSON(`${API_BASE}/user/daily`, { headers: headers() });
+}
+
 // ── 管理接口 ──
 
 // 角色管理

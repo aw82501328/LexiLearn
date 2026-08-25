@@ -1,5 +1,6 @@
-import { useMemo } from 'react';
+import { useMemo, useState, useEffect, useCallback } from 'react';
 import { useApp } from '../context/AppContext';
+import { getUserTodayStats } from '../services/adminApi';
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
   LineChart, Line, PieChart, Pie, Cell, Area, AreaChart, Legend,
@@ -11,6 +12,15 @@ function formatDate(ts) {
   if (!ts) return '';
   const d = new Date(ts);
   return `${d.getMonth() + 1}/${d.getDate()}`;
+}
+
+/** 分钟数格式化为 小时+分钟 */
+function formatMinutes(min) {
+  const m = Math.max(0, Math.floor(min));
+  const h = Math.floor(m / 60);
+  const rest = m % 60;
+  if (h > 0) return rest > 0 ? `${h}小时${rest}分` : `${h}小时`;
+  return `${rest}分`;
 }
 
 function getFileTypeCounts(fileHistory) {
@@ -26,6 +36,21 @@ function getFileTypeCounts(fileHistory) {
 export default function StatsPage() {
   const { state } = useApp();
   const { fileHistory, vocabulary, translationCount, ttsCount } = state;
+  const [todayStats, setTodayStats] = useState(null);
+
+  // 加载今日数据（阅读时长/阅读单词数/翻译单词数）
+  const loadToday = useCallback(async () => {
+    try {
+      const data = await getUserTodayStats();
+      setTodayStats(data);
+    } catch {
+      setTodayStats(null);
+    }
+  }, []);
+
+  useEffect(() => {
+    loadToday();
+  }, [loadToday]);
 
   // 概览数据
   const totalFiles = fileHistory.length;
@@ -142,6 +167,54 @@ export default function StatsPage() {
                 </p>
               </div>
             ))}
+          </div>
+
+          {/* ---- 今日数据 ---- */}
+          <div className="mb-10 rounded-xl border border-white/5 bg-gradient-to-br from-electric-cyan/[0.07] to-cyan-glow/[0.04] p-5">
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="text-sm font-bold text-soft-white">今日数据</h2>
+              {todayStats && (
+                <span className="text-[10px] text-muted-gray">{todayStats.date}</span>
+              )}
+            </div>
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+              <div className="flex items-center gap-3 rounded-xl border border-white/5 bg-dark-slate/50 p-4">
+                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-electric-cyan/10 text-electric-cyan">
+                  <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+                </div>
+                <div className="min-w-0">
+                  <p className="text-lg font-bold text-electric-cyan truncate">{todayStats ? formatMinutes(todayStats.readingMinutes) : '—'}</p>
+                  <p className="text-xs text-muted-gray">阅读时长</p>
+                </div>
+              </div>
+              <div className="flex items-center gap-3 rounded-xl border border-white/5 bg-dark-slate/50 p-4">
+                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-cyan-glow/10 text-cyan-glow">
+                  <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>
+                </div>
+                <div className="min-w-0">
+                  <p className="text-lg font-bold text-cyan-glow truncate">{todayStats ? todayStats.wordsRead.toLocaleString() : '—'}</p>
+                  <p className="text-xs text-muted-gray">阅读单词数</p>
+                </div>
+              </div>
+              <div className="flex items-center gap-3 rounded-xl border border-white/5 bg-dark-slate/50 p-4">
+                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-violet-400/10 text-violet-400">
+                  <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m5 8 6 6"/><path d="m4 14 6-6 2-3"/><path d="M2 5h12"/><path d="M7 2h1"/><path d="m22 22-5-10-5 10"/><path d="M14 18h6"/></svg>
+                </div>
+                <div className="min-w-0">
+                  <p className="text-lg font-bold text-violet-400 truncate">{todayStats ? todayStats.translatedWords.toLocaleString() : '—'}</p>
+                  <p className="text-xs text-muted-gray">翻译单词数</p>
+                </div>
+              </div>
+              <div className="flex items-center gap-3 rounded-xl border border-white/5 bg-dark-slate/50 p-4">
+                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-emerald-400/10 text-emerald-400">
+                  <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+                </div>
+                <div className="min-w-0">
+                  <p className="text-lg font-bold text-emerald-400 truncate">{todayStats ? todayStats.translatedSentences.toLocaleString() : '—'}</p>
+                  <p className="text-xs text-muted-gray">翻译句子数</p>
+                </div>
+              </div>
+            </div>
           </div>
 
           {/* ---- 图表区 ---- */}

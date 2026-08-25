@@ -4,6 +4,7 @@ import TextContent from '../components/TextContent';
 import PDFPageViewer from '../components/PDFPageViewer';
 import { useApp } from '../context/AppContext';
 import { loadContent, loadPDFBuffer, saveContent } from '../services/dataStore';
+import { logActivity } from '../services/adminApi';
 
 export default function LearningPage() {
   const { fileId } = useParams();
@@ -15,9 +16,18 @@ export default function LearningPage() {
   const [toolbarNode, setToolbarNode] = useState(null);
   const progressRef = useRef(null);
   const saveTimerRef = useRef(null);
+  // 阅读统计（阅读时长 + 阅读单词数）
+  const sessionStartRef = useRef(null);
+  const lastReportRef = useRef(null);
+  const lastPageRef = useRef(0);
+  const wordsPerPageRef = useRef(0);
+  const pendingWordsRef = useRef(0);
+  const reportTimerRef = useRef(null);
 
   const navigateState = location.state;
   const initialProgress = navigateState?.initialProgress || null;
+  const fileDataRef = useRef(null);
+  fileDataRef.current = fileData;
 
   useEffect(() => {
     (async () => {
@@ -83,6 +93,21 @@ export default function LearningPage() {
 
   const handleProgress = useCallback((progress) => {
     progressRef.current = progress;
+    // 阅读单词数累计：按进度增量 × 每页词数
+    const total = progress.total;
+    const page = progress.page;
+    if (total > 0) {
+      // 总页数变化时更新每页词数
+      if (fileDataRef.current?.wordCount) {
+        const wpp = fileDataRef.current.wordCount / total;
+        if (wpp !== wordsPerPageRef.current) wordsPerPageRef.current = wpp;
+      }
+      if (lastPageRef.current === 0) lastPageRef.current = page;
+      if (page > lastPageRef.current) {
+        pendingWordsRef.current += (page - lastPageRef.current) * wordsPerPageRef.current;
+        lastPageRef.current = page;
+      }
+    }
     updateFileProgress(fileId, progress);
     if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
     saveTimerRef.current = setTimeout(() => {
@@ -91,6 +116,41 @@ export default function LearningPage() {
       }).catch(() => {});
     }, 2000);
   }, [fileId, updateFileProgress]);
+
+  // 上报阅读统计（阅读时长 + 阅读单词数）
+  const flushReading = useCallback(() => {
+    if (!sessionStartRef.current) return;
+    const now = Date.now();
+    const base = lastReportRef.current || sessionStartRef.current;
+    const elapsedMin = (now - base) / 60000;
+    const words = Math.round(pendingWordsRef.current);
+    if (elapsedMin >= 0.5 || words > 0) {
+      logActivity('reading', {
+        minutes: Math.max(0.1, Math.round(elapsedMin * 10) / 10),
+        words,
+      }).catch(() => {});
+    }
+    lastReportRef.current = now;
+    pendingWordsRef.current = 0;
+  }, []);
+
+  // 文件加载完成后启动阅读会话计时与定时上报
+  useEffect(() => {
+    if (!fileData) return;
+    sessionStartRef.current = Date.now();
+    lastReportRef.current = Date.now();
+    lastPageRef.current = initialProgress?.page || 0;
+    wordsPerPageRef.current = fileData.wordCount
+      ? fileData.wordCount / (fileData.pages?.length || 1)
+      : 0;
+    reportTimerRef.current = setInterval(() => flushReading(), 60000);
+    return () => {
+      if (reportTimerRef.current) clearInterval(reportTimerRef.current);
+      reportTimerRef.current = null;
+      flushReading();
+      sessionStartRef.current = null;
+    };
+  }, [fileData?.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     return () => {

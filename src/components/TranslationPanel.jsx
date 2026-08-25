@@ -32,7 +32,8 @@ export default function TranslationPanel({ word, mode, fullText, wordGlobalIndex
           if (cancelled) return;
           setCnTranslation(zh);
           setLoading(false);
-          logActivity('dict', { word }).catch(() => {});
+          logActivity('translateWord', { word }).catch(() => {}); // 今日翻译单词数
+          logActivity('dict', { word }).catch(() => {}); // 查词统计
         } catch (e) {
           if (!cancelled) {
             setError(e.message);
@@ -45,7 +46,7 @@ export default function TranslationPanel({ word, mode, fullText, wordGlobalIndex
           if (!cancelled) {
             setCnTranslation(result);
             setLoading(false);
-            logActivity('translate', { text: word.slice(0, 100) }).catch(() => {});
+            logActivity('translateSentence', { text: word.slice(0, 100) }).catch(() => {}); // 今日翻译句子数
           }
         } catch (e) {
           if (!cancelled) {
