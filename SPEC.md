@@ -191,3 +191,33 @@ curl -I https://lexilearn.cloud/sw.js | grep -i cache-control
 - `server.js`：`sw.js` / `workbox-*` 禁止缓存
 - `.env.example`：`LEXILEARN_SW_EXCLUDES` 配置项说明
 - 服务器 `/etc/caddy/Caddyfile`：子路径分流规则 + `/sw.js` no-cache
+
+## 9. 线上部署状态与同步提醒（重要）
+
+> 本节点记录 2026-08-31 本次线上修复的实际操作，防止后续部署覆盖掉手改内容。
+
+### 9.1 当前线上状态
+
+- **服务器 `/root/deploy-package/dist/sw.js` 已被手动修改**：denylist 加上了 `/i` 标志
+  （因为最初多次上传 dist 都未生效，最后在服务器上直接改了文件内容）。
+- 该手改内容与仓库中 `vite.config.js` 重新构建出的 `sw.js` 产物一致。
+- **注意**：`sw.js` 内容取决于构建产物，若后续重新构建并整体覆盖 `dist/`，手改会被
+  新构建产物替换。由于新构建产物本身就含 `/i`，替换后仍是正确状态，无需担心。
+
+### 9.2 待同步项（务必执行，否则线上与仓库不一致）
+
+| 项 | 说明 |
+|----|------|
+| `deploy-package/server.js` | 本地最新版含 `sw.js`/`workbox-*` no-cache 逻辑；若服务器上的 `server.js` 还是旧版（无此逻辑），需上传覆盖并 `pm2 restart lexilearn` |
+| `/etc/caddy/Caddyfile` | 若未添加 `/sw.js` no-cache 头（`@sw path /sw.js` + `header @sw Cache-Control ...`），建议补上（server.js 已有 no-cache，此为双保险，可省略） |
+| 浏览器旧 SW | 曾访问过站点的浏览器需注销一次旧 SW（DevTools → Application → Service Workers → Unregister → 刷新），否则旧 SW 会继续拦截到缓存过期 |
+
+### 9.3 后续标准发布流程（避免再踩坑）
+
+1. 本地 `npm run build`（或 `deploy.bat`）生成新 `dist/`。
+2. 上传 `deploy-package/` 到服务器**整体替换** `dist/`（含 `sw.js` 与 `workbox-*.js` 必须同步更新），并上传 `server.js`。
+3. `pm2 restart lexilearn`。
+4. 验证 `curl -s https://lexilearn.cloud/sw.js | grep -o "denylist:\[[^]]*\]"` 输出含 `/i`。
+5. 验证 `curl -I https://lexilearn.cloud/sw.js | grep -i cache-control` 输出 no-cache。
+6. 浏览器打开一次 `https://lexilearn.cloud/` 让新版 SW 自动接管。
+
