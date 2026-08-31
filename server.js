@@ -166,6 +166,13 @@ function serveStatic(req, res) {
     if (fs.existsSync(filePath) && fs.statSync(filePath).isFile()) {
       const content = fs.readFileSync(filePath);
       if (mime) res.setHeader('Content-Type', mime);
+      // Service Worker 脚本不能被缓存，否则浏览器无法检测到新版本，
+      // 旧 SW 会持续拦截导航（浏览器对 sw.js 默认有 24h 缓存上限）
+      const baseName = path.basename(filePath);
+      if (baseName === 'sw.js' || baseName.startsWith('workbox-')) {
+        res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+        res.setHeader('Pragma', 'no-cache');
+      }
       res.end(content);
       return true;
     }
